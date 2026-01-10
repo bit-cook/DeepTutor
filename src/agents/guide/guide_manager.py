@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 GuideManager - Guided Learning Session Manager
 Manages the complete lifecycle of learning sessions
@@ -13,8 +14,8 @@ import uuid
 
 import yaml
 
-from src.core.core import load_config_with_main, parse_language
-from src.core.logging import get_logger
+from src.logging import get_logger
+from src.services.config import load_config_with_main, parse_language
 
 from .agents import ChatAgent, InteractiveAgent, LocateAgent, SummaryAgent
 
@@ -113,7 +114,9 @@ class GuideManager:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.locate_agent = LocateAgent(api_key, base_url, self.language, binding=self.binding)
-        self.interactive_agent = InteractiveAgent(api_key, base_url, self.language, binding=self.binding)
+        self.interactive_agent = InteractiveAgent(
+            api_key, base_url, self.language, binding=self.binding
+        )
         self.chat_agent = ChatAgent(api_key, base_url, self.language, binding=self.binding)
         self.summary_agent = SummaryAgent(api_key, base_url, self.language, binding=self.binding)
 
@@ -352,7 +355,7 @@ class GuideManager:
         session.current_index = new_index
         session.current_html = interactive_result.get("html", "")
 
-        message = f"✅ Entering knowledge point {new_index + 1}: {current_knowledge.get('knowledge_title', '')}"
+        message = f"→ Entering knowledge point {new_index + 1}: {current_knowledge.get('knowledge_title', '')}"
 
         session.chat_history.append(
             {
