@@ -15,6 +15,9 @@ import {
   type Theme,
 } from "@/lib/theme";
 
+// Language storage key
+const LANGUAGE_STORAGE_KEY = "deeptutor-language";
+
 // --- Types ---
 interface LogEntry {
   type: string;
@@ -71,16 +74,16 @@ interface SolverState {
 // Question Progress Info
 interface QuestionProgressInfo {
   stage:
-  | "planning"
-  | "researching"
-  | "generating"
-  | "validating"
-  | "complete"
-  // Mimic mode stages
-  | "uploading"
-  | "parsing"
-  | "extracting"
-  | null;
+    | "planning"
+    | "researching"
+    | "generating"
+    | "validating"
+    | "complete"
+    // Mimic mode stages
+    | "uploading"
+    | "parsing"
+    | "extracting"
+    | null;
   progress: {
     current?: number;
     total?: number;
@@ -209,6 +212,35 @@ interface IdeaGenState {
   progress: { current: number; total: number } | null;
 }
 
+// Chat Types
+interface ChatSource {
+  rag?: Array<{ kb_name: string; content: string }>;
+  web?: Array<{ url: string; title?: string; snippet?: string }>;
+}
+
+interface HomeChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  sources?: ChatSource;
+  isStreaming?: boolean;
+}
+
+interface ChatState {
+  sessionId: string | null;
+  messages: HomeChatMessage[];
+  isLoading: boolean;
+  selectedKb: string;
+  enableRag: boolean;
+  enableWebSearch: boolean;
+  currentStage: string | null;
+}
+
+// Sidebar Navigation Order Type
+export interface SidebarNavOrder {
+  start: string[]; // Array of href paths for START group
+  learnResearch: string[]; // Array of href paths for LEARN & RESEARCH group
+}
+
 interface GlobalContextType {
   // Solver
   solverState: SolverState;
@@ -249,9 +281,32 @@ interface GlobalContextType {
   ideaGenState: IdeaGenState;
   setIdeaGenState: React.Dispatch<React.SetStateAction<IdeaGenState>>;
 
+  // Chat
+  chatState: ChatState;
+  setChatState: React.Dispatch<React.SetStateAction<ChatState>>;
+  sendChatMessage: (message: string) => void;
+  clearChatHistory: () => void;
+  loadChatSession: (sessionId: string) => Promise<void>;
+  newChatSession: () => void;
+
   // UI Settings
   uiSettings: { theme: "light" | "dark"; language: "en" | "zh" };
   refreshSettings: () => Promise<void>;
+  updateTheme: (theme: "light" | "dark") => Promise<void>;
+  updateLanguage: (language: "en" | "zh") => Promise<void>;
+
+  // Sidebar
+  sidebarWidth: number;
+  setSidebarWidth: (width: number) => void;
+  sidebarCollapsed: boolean;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  toggleSidebar: () => void;
+
+  // Sidebar Customization
+  sidebarDescription: string;
+  setSidebarDescription: (description: string) => Promise<void>;
+  sidebarNavOrder: SidebarNavOrder;
+  setSidebarNavOrder: (order: SidebarNavOrder) => Promise<void>;
 }
 
 const GlobalContext = createContext<GlobalContextType | undefined>(undefined);
@@ -266,43 +321,226 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
   const [isInitialized, setIsInitialized] = useState(false);
 
   const refreshSettings = async () => {
+    // Try to load from backend API first, fallback to localStorage
     try {
       const res = await fetch(apiUrl("/api/v1/settings"));
       if (res.ok) {
         const data = await res.json();
-        if (data.ui) {
-          // localStorage takes priority over backend
-          const storedTheme = getStoredTheme();
-          const themeToUse = storedTheme || data.ui.theme;
-
-          setUiSettings({
-            theme: themeToUse,
-            language: data.ui.language,
-          });
-          // Apply and persist theme
-          setTheme(themeToUse);
+        const serverTheme = data.ui?.theme || "light";
+        const serverLanguage = data.ui?.language || "en";
+        setUiSettings({
+          theme: serverTheme,
+          language: serverLanguage,
+        });
+        setTheme(serverTheme);
+        // Sync to localStorage as cache
+        if (typeof window !== "undefined") {
+          localStorage.setItem(LANGUAGE_STORAGE_KEY, serverLanguage);
         }
+        return;
       }
     } catch (e) {
-      // Fall back to localStorage theme on error
-      const stored = getStoredTheme();
-      if (stored) {
-        setUiSettings((prev) => ({ ...prev, theme: stored }));
-      }
+      console.warn(
+        "Failed to load settings from server, using localStorage:",
+        e,
+      );
+    }
+
+    // Fallback to localStorage
+    const storedTheme = getStoredTheme();
+    const storedLanguage =
+      typeof window !== "undefined"
+        ? (localStorage.getItem(LANGUAGE_STORAGE_KEY) as "en" | "zh") || "en"
+        : "en";
+
+    const themeToUse = storedTheme || "light";
+    setUiSettings({
+      theme: themeToUse,
+      language: storedLanguage,
+    });
+    setTheme(themeToUse);
+  };
+
+  const updateTheme = async (newTheme: "light" | "dark") => {
+    // Update UI immediately
+    setTheme(newTheme);
+    setUiSettings((prev) => ({ ...prev, theme: newTheme }));
+
+    // Persist to backend
+    try {
+      await fetch(apiUrl("/api/v1/settings/theme"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme: newTheme }),
+      });
+    } catch (e) {
+      console.warn("Failed to save theme to server:", e);
+    }
+  };
+
+  const updateLanguage = async (newLanguage: "en" | "zh") => {
+    // Update UI immediately
+    setUiSettings((prev) => ({ ...prev, language: newLanguage }));
+    if (typeof window !== "undefined") {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, newLanguage);
+    }
+
+    // Persist to backend
+    try {
+      await fetch(apiUrl("/api/v1/settings/language"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language: newLanguage }),
+      });
+    } catch (e) {
+      console.warn("Failed to save language to server:", e);
     }
   };
 
   useEffect(() => {
-    // Initialize theme immediately on first render
+    // Initialize settings on first render
     if (!isInitialized) {
+      // First apply localStorage theme immediately to avoid flash
       const initialTheme = initializeTheme();
-      setUiSettings((prev) => ({ ...prev, theme: initialTheme }));
+      const storedLanguage =
+        typeof window !== "undefined"
+          ? (localStorage.getItem(LANGUAGE_STORAGE_KEY) as "en" | "zh") || "en"
+          : "en";
+
+      setUiSettings({
+        theme: initialTheme,
+        language: storedLanguage,
+      });
       setIsInitialized(true);
 
-      // Then fetch from backend and sync
+      // Then async load from server (which may override)
       refreshSettings();
     }
   }, [isInitialized]);
+
+  // --- Sidebar State ---
+  const SIDEBAR_MIN_WIDTH = 64;
+  const SIDEBAR_MAX_WIDTH = 320;
+  const SIDEBAR_DEFAULT_WIDTH = 256;
+  const SIDEBAR_COLLAPSED_WIDTH = 64;
+
+  const [sidebarWidth, setSidebarWidthState] = useState<number>(
+    SIDEBAR_DEFAULT_WIDTH,
+  );
+  const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(false);
+
+  // Initialize sidebar state from localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const storedWidth = localStorage.getItem("sidebarWidth");
+      const storedCollapsed = localStorage.getItem("sidebarCollapsed");
+
+      if (storedWidth) {
+        const width = parseInt(storedWidth, 10);
+        if (
+          !isNaN(width) &&
+          width >= SIDEBAR_MIN_WIDTH &&
+          width <= SIDEBAR_MAX_WIDTH
+        ) {
+          setSidebarWidthState(width);
+        }
+      }
+
+      if (storedCollapsed) {
+        setSidebarCollapsedState(storedCollapsed === "true");
+      }
+    }
+  }, []);
+
+  const setSidebarWidth = (width: number) => {
+    const clampedWidth = Math.max(
+      SIDEBAR_MIN_WIDTH,
+      Math.min(SIDEBAR_MAX_WIDTH, width),
+    );
+    setSidebarWidthState(clampedWidth);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sidebarWidth", clampedWidth.toString());
+    }
+  };
+
+  const setSidebarCollapsed = (collapsed: boolean) => {
+    setSidebarCollapsedState(collapsed);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sidebarCollapsed", collapsed.toString());
+    }
+  };
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(!sidebarCollapsed);
+  };
+
+  // --- Sidebar Customization State ---
+  const DEFAULT_DESCRIPTION = "✨ Data Intelligence Lab @ HKU";
+  const DEFAULT_NAV_ORDER: SidebarNavOrder = {
+    start: ["/", "/history", "/knowledge", "/notebook"],
+    learnResearch: [
+      "/question",
+      "/solver",
+      "/guide",
+      "/ideagen",
+      "/research",
+      "/co_writer",
+    ],
+  };
+
+  const [sidebarDescription, setSidebarDescriptionState] =
+    useState<string>(DEFAULT_DESCRIPTION);
+  const [sidebarNavOrder, setSidebarNavOrderState] =
+    useState<SidebarNavOrder>(DEFAULT_NAV_ORDER);
+
+  // Initialize sidebar customization from backend API
+  useEffect(() => {
+    const loadSidebarSettings = async () => {
+      try {
+        const response = await fetch(apiUrl("/api/v1/settings/sidebar"));
+        if (response.ok) {
+          const data = await response.json();
+          if (data.description) {
+            setSidebarDescriptionState(data.description);
+          }
+          if (data.nav_order) {
+            setSidebarNavOrderState(data.nav_order);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load sidebar settings from backend:", e);
+      }
+    };
+    loadSidebarSettings();
+  }, []);
+
+  const setSidebarDescription = async (description: string) => {
+    setSidebarDescriptionState(description);
+    // Save to backend
+    try {
+      await fetch(apiUrl("/api/v1/settings/sidebar/description"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description }),
+      });
+    } catch (e) {
+      console.error("Failed to save sidebar description:", e);
+    }
+  };
+
+  const setSidebarNavOrder = async (order: SidebarNavOrder) => {
+    setSidebarNavOrderState(order);
+    // Save to backend
+    try {
+      await fetch(apiUrl("/api/v1/settings/sidebar/nav-order"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nav_order: order }),
+      });
+    } catch (e) {
+      console.error("Failed to save sidebar nav order:", e);
+    }
+  };
 
   // --- Solver Logic ---
   const [solverState, setSolverState] = useState<SolverState>({
@@ -816,139 +1054,40 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
     };
   };
 
-  const startMimicQuestionGen = async (
-    file: File | null,
-    paperPath: string,
-    kb: string,
-    maxQuestions?: number,
-  ) => {
-    if (questionWs.current) questionWs.current.close();
-
-    // Support two modes: PDF upload or pre-parsed directory
-    const hasFile = file !== null;
-    const hasParsedPath = paperPath && paperPath.trim() !== "";
-
-    if (!hasFile && !hasParsedPath) {
-      addQuestionLog({
-        type: "error",
-        content: "Please upload a PDF file or provide a parsed exam directory",
-      });
-      return;
-    }
-
-    setQuestionState((prev) => ({
-      ...prev,
-      step: "generating",
-      mode: "mimic",
-      logs: [],
-      results: [],
-      selectedKb: kb,
-      uploadedFile: file,
-      paperPath: paperPath,
-      progress: {
-        stage: hasFile ? "uploading" : "parsing", // Start with uploading for PDF, parsing for pre-parsed
-        progress: { current: 0, total: maxQuestions || 1 },
-      },
-      agentStatus: {
-        QuestionGenerationAgent: "pending",
-        ValidationWorkflow: "pending",
-        RetrievalTool: "pending",
-      },
-      tokenStats: {
-        model: "Unknown",
-        calls: 0,
-        tokens: 0,
-        input_tokens: 0,
-        output_tokens: 0,
-        cost: 0.0,
-      },
-    }));
-
-    const ws = new WebSocket(wsUrl("/api/v1/question/mimic"));
-    questionWs.current = ws;
-
-    ws.onopen = async () => {
-      if (hasFile && file) {
-        // Convert file to base64
-        addQuestionLog({
-          type: "system",
-          content: "Preparing to upload PDF file...",
-        });
-        const reader = new FileReader();
-        reader.onload = () => {
-          const base64Data = (reader.result as string).split(",")[1]; // Remove data:application/pdf;base64, prefix
-          ws.send(
-            JSON.stringify({
-              mode: "upload",
-              pdf_data: base64Data,
-              pdf_name: file.name,
-              kb_name: kb,
-              max_questions: maxQuestions,
-            }),
-          );
-          addQuestionLog({
-            type: "system",
-            content: `Uploaded: ${file.name}, parsing...`,
-          });
-        };
-        reader.readAsDataURL(file);
-      } else {
-        // Use pre-parsed directory
-        ws.send(
-          JSON.stringify({
-            mode: "parsed",
-            paper_path: paperPath,
-            kb_name: kb,
-            max_questions: maxQuestions,
-          }),
-        );
-        addQuestionLog({
-          type: "system",
-          content: "Initializing Mimic Generator...",
-        });
-      }
+  // Helper function to handle mimic WebSocket messages
+  const handleMimicWsMessage = (data: any, ws: WebSocket) => {
+    const stageMap: Record<string, string> = {
+      init: "uploading",
+      upload: "uploading",
+      parsing: "parsing",
+      processing: "extracting",
     };
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
-      if (data.type === "log") {
+    switch (data.type) {
+      case "log":
         addQuestionLog(data);
-      } else if (data.type === "status") {
-        // Status updates for mimic mode stages
-        const stageMap: Record<string, string> = {
-          init: "uploading",
-          upload: "uploading",
-          parsing: "parsing",
-          processing: "extracting",
-        };
-        const mappedStage = stageMap[data.stage] || data.stage;
+        break;
 
+      case "status": {
+        const mappedStage = stageMap[data.stage] || data.stage;
         addQuestionLog({
           type: "system",
           content: data.content || data.message || `Stage: ${data.stage}`,
         });
-
-        // Update progress stage based on status event
         if (mappedStage) {
           setQuestionState((prev) => ({
             ...prev,
-            progress: {
-              ...prev.progress,
-              stage: mappedStage,
-            },
+            progress: { ...prev.progress, stage: mappedStage },
           }));
         }
-      } else if (data.type === "progress") {
-        // Progress updates for mimic mode (parsing, extracting, generating)
+        break;
+      }
+
+      case "progress": {
         const stage = data.stage || "generating";
-        const message = data.message || "";
-
-        addQuestionLog({
-          type: "system",
-          content: message,
-        });
-
+        if (data.message) {
+          addQuestionLog({ type: "system", content: data.message });
+        }
         setQuestionState((prev) => ({
           ...prev,
           progress: {
@@ -965,7 +1104,6 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
             },
           },
         }));
-
         // Store reference questions info when extracting is complete
         if (
           stage === "extracting" &&
@@ -983,42 +1121,39 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
             },
           }));
         }
-      } else if (data.type === "question_update") {
-        // Individual question status update during generation
+        break;
+      }
+
+      case "question_update": {
         const statusMessage =
           data.status === "generating"
             ? `Generating mimic question ${data.index}...`
             : data.status === "failed"
               ? `Question ${data.index} failed: ${data.error}`
               : `Question ${data.index}: ${data.status}`;
-
         addQuestionLog({
           type: data.status === "failed" ? "warning" : "system",
           content: statusMessage,
         });
-
         if (data.current !== undefined) {
           setQuestionState((prev) => ({
             ...prev,
             progress: {
               ...prev.progress,
-              progress: {
-                ...prev.progress.progress,
-                current: data.current,
-              },
+              progress: { ...prev.progress.progress, current: data.current },
             },
           }));
         }
-      } else if (data.type === "result") {
-        // Single question result
+        break;
+      }
+
+      case "result": {
         const isExtended =
           data.extended || data.validation?.decision === "extended";
-
         addQuestionLog({
           type: "success",
           content: `✅ Question ${data.index || (data.current ?? 0)} generated successfully`,
         });
-
         setQuestionState((prev) => ({
           ...prev,
           results: [
@@ -1043,32 +1178,31 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
               (prev.progress.extendedQuestions || 0) + (isExtended ? 1 : 0),
           },
         }));
-      } else if (data.type === "summary") {
-        // Final summary for mimic mode
+        break;
+      }
+
+      case "summary":
         addQuestionLog({
           type: "success",
           content: `Generation complete: ${data.successful}/${data.total_reference} succeeded`,
         });
-
         setQuestionState((prev) => ({
           ...prev,
           progress: {
             ...prev.progress,
             stage: "generating",
-            progress: {
-              current: data.successful,
-              total: data.total_reference,
-            },
+            progress: { current: data.successful, total: data.total_reference },
             completedQuestions: data.successful,
             failedQuestions: data.failed,
           },
         }));
-      } else if (data.type === "complete") {
+        break;
+
+      case "complete":
         addQuestionLog({
           type: "success",
           content: "✅ Mimic generation completed!",
         });
-
         setQuestionState((prev) => ({
           ...prev,
           step: "result",
@@ -1079,7 +1213,9 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
           },
         }));
         ws.close();
-      } else if (data.type === "error") {
+        break;
+
+      case "error":
         addQuestionLog({
           type: "error",
           content: `Error: ${data.content || data.message || "Unknown error"}`,
@@ -1087,12 +1223,108 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
         setQuestionState((prev) => ({
           ...prev,
           step: "config",
-          progress: {
-            stage: null,
-            progress: {},
-          },
+          progress: { stage: null, progress: {} },
         }));
+        break;
+    }
+  };
+
+  const startMimicQuestionGen = async (
+    file: File | null,
+    paperPath: string,
+    kb: string,
+    maxQuestions?: number,
+  ) => {
+    if (questionWs.current) questionWs.current.close();
+
+    // Validate input
+    const hasFile = file !== null;
+    const hasParsedPath = paperPath && paperPath.trim() !== "";
+
+    if (!hasFile && !hasParsedPath) {
+      addQuestionLog({
+        type: "error",
+        content: "Please upload a PDF file or provide a parsed exam directory",
+      });
+      return;
+    }
+
+    // Initialize state
+    setQuestionState((prev) => ({
+      ...prev,
+      step: "generating",
+      mode: "mimic",
+      logs: [],
+      results: [],
+      selectedKb: kb,
+      uploadedFile: file,
+      paperPath: paperPath,
+      progress: {
+        stage: hasFile ? "uploading" : "parsing",
+        progress: { current: 0, total: maxQuestions || 1 },
+      },
+      agentStatus: {
+        QuestionGenerationAgent: "pending",
+        ValidationWorkflow: "pending",
+        RetrievalTool: "pending",
+      },
+      tokenStats: {
+        model: "Unknown",
+        calls: 0,
+        tokens: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        cost: 0.0,
+      },
+    }));
+
+    // Create WebSocket connection
+    const ws = new WebSocket(wsUrl("/api/v1/question/mimic"));
+    questionWs.current = ws;
+
+    ws.onopen = async () => {
+      if (hasFile && file) {
+        addQuestionLog({
+          type: "system",
+          content: "Preparing to upload PDF file...",
+        });
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64Data = (reader.result as string).split(",")[1];
+          ws.send(
+            JSON.stringify({
+              mode: "upload",
+              pdf_data: base64Data,
+              pdf_name: file.name,
+              kb_name: kb,
+              max_questions: maxQuestions,
+            }),
+          );
+          addQuestionLog({
+            type: "system",
+            content: `Uploaded: ${file.name}, parsing...`,
+          });
+        };
+        reader.readAsDataURL(file);
+      } else {
+        ws.send(
+          JSON.stringify({
+            mode: "parsed",
+            paper_path: paperPath,
+            kb_name: kb,
+            max_questions: maxQuestions,
+          }),
+        );
+        addQuestionLog({
+          type: "system",
+          content: "Initializing Mimic Generator...",
+        });
       }
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      handleMimicWsMessage(data, ws);
     };
 
     ws.onerror = () => {
@@ -1345,6 +1577,234 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
     progress: null,
   });
 
+  // --- Chat Logic ---
+  const [chatState, setChatState] = useState<ChatState>({
+    sessionId: null,
+    messages: [],
+    isLoading: false,
+    selectedKb: "",
+    enableRag: false,
+    enableWebSearch: false,
+    currentStage: null,
+  });
+  const chatWs = useRef<WebSocket | null>(null);
+  // Use ref to always have the latest sessionId in WebSocket callbacks (avoid closure issues)
+  const sessionIdRef = useRef<string | null>(null);
+
+  const sendChatMessage = (message: string) => {
+    if (!message.trim() || chatState.isLoading) return;
+
+    // Add user message
+    setChatState((prev) => ({
+      ...prev,
+      isLoading: true,
+      currentStage: "connecting",
+      messages: [...prev.messages, { role: "user", content: message }],
+    }));
+
+    // Close existing connection if any
+    if (chatWs.current) {
+      chatWs.current.close();
+    }
+
+    const ws = new WebSocket(wsUrl("/api/v1/chat"));
+    chatWs.current = ws;
+
+    let assistantMessage = "";
+
+    ws.onopen = () => {
+      // Build history from current messages (excluding the one just added)
+      const history = chatState.messages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      }));
+
+      ws.send(
+        JSON.stringify({
+          message,
+          // Use ref to get the latest sessionId (avoids closure capturing stale state)
+          session_id: sessionIdRef.current,
+          history,
+          kb_name: chatState.selectedKb,
+          enable_rag: chatState.enableRag,
+          enable_web_search: chatState.enableWebSearch,
+        }),
+      );
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.type === "session") {
+        // Store session ID from backend - update both ref and state
+        sessionIdRef.current = data.session_id;
+        setChatState((prev) => ({
+          ...prev,
+          sessionId: data.session_id,
+        }));
+      } else if (data.type === "status") {
+        setChatState((prev) => ({
+          ...prev,
+          currentStage: data.stage || data.message,
+        }));
+      } else if (data.type === "stream") {
+        assistantMessage += data.content;
+        setChatState((prev) => {
+          const messages = [...prev.messages];
+          const lastMessage = messages[messages.length - 1];
+          if (lastMessage?.role === "assistant" && lastMessage?.isStreaming) {
+            // Update existing streaming message
+            messages[messages.length - 1] = {
+              ...lastMessage,
+              content: assistantMessage,
+            };
+          } else {
+            // Add new streaming message
+            messages.push({
+              role: "assistant",
+              content: assistantMessage,
+              isStreaming: true,
+            });
+          }
+          return { ...prev, messages, currentStage: "generating" };
+        });
+      } else if (data.type === "sources") {
+        setChatState((prev) => {
+          const messages = [...prev.messages];
+          const lastMessage = messages[messages.length - 1];
+          if (lastMessage?.role === "assistant") {
+            messages[messages.length - 1] = {
+              ...lastMessage,
+              sources: { rag: data.rag, web: data.web },
+            };
+          }
+          return { ...prev, messages };
+        });
+      } else if (data.type === "result") {
+        setChatState((prev) => {
+          const messages = [...prev.messages];
+          const lastMessage = messages[messages.length - 1];
+          if (lastMessage?.role === "assistant") {
+            messages[messages.length - 1] = {
+              ...lastMessage,
+              content: data.content,
+              isStreaming: false,
+            };
+          }
+          return {
+            ...prev,
+            messages,
+            isLoading: false,
+            currentStage: null,
+          };
+        });
+        ws.close();
+      } else if (data.type === "error") {
+        setChatState((prev) => ({
+          ...prev,
+          isLoading: false,
+          currentStage: null,
+          messages: [
+            ...prev.messages,
+            { role: "assistant", content: `Error: ${data.message}` },
+          ],
+        }));
+        ws.close();
+      }
+    };
+
+    ws.onerror = () => {
+      setChatState((prev) => ({
+        ...prev,
+        isLoading: false,
+        currentStage: null,
+        messages: [
+          ...prev.messages,
+          { role: "assistant", content: "Connection error. Please try again." },
+        ],
+      }));
+    };
+
+    ws.onclose = () => {
+      if (chatWs.current === ws) {
+        chatWs.current = null;
+      }
+      setChatState((prev) => ({
+        ...prev,
+        isLoading: false,
+        currentStage: null,
+      }));
+    };
+  };
+
+  const clearChatHistory = () => {
+    // Clear both ref and state
+    sessionIdRef.current = null;
+    setChatState((prev) => ({
+      ...prev,
+      sessionId: null,
+      messages: [],
+      currentStage: null,
+    }));
+  };
+
+  const newChatSession = () => {
+    // Close any existing WebSocket
+    if (chatWs.current) {
+      chatWs.current.close();
+      chatWs.current = null;
+    }
+    // Reset to new session - clear both ref and state
+    sessionIdRef.current = null;
+    setChatState((prev) => ({
+      ...prev,
+      sessionId: null,
+      messages: [],
+      isLoading: false,
+      currentStage: null,
+    }));
+  };
+
+  const loadChatSession = async (sessionId: string) => {
+    try {
+      const response = await fetch(
+        apiUrl(`/api/v1/chat/sessions/${sessionId}`),
+      );
+      if (!response.ok) {
+        throw new Error("Session not found");
+      }
+      const session = await response.json();
+
+      // Convert session messages to HomeChatMessage format
+      const messages: HomeChatMessage[] = session.messages.map((msg: any) => ({
+        role: msg.role,
+        content: msg.content,
+        sources: msg.sources,
+        isStreaming: false,
+      }));
+
+      // Restore session settings
+      const settings = session.settings || {};
+
+      // Update ref with loaded session ID for continued conversation
+      sessionIdRef.current = session.session_id;
+
+      setChatState((prev) => ({
+        ...prev,
+        sessionId: session.session_id,
+        messages,
+        selectedKb: settings.kb_name || prev.selectedKb,
+        enableRag: settings.enable_rag ?? prev.enableRag,
+        enableWebSearch: settings.enable_web_search ?? prev.enableWebSearch,
+        isLoading: false,
+        currentStage: null,
+      }));
+    } catch (error) {
+      console.error("Failed to load session:", error);
+      throw error;
+    }
+  };
+
   return (
     <GlobalContext.Provider
       value={{
@@ -1362,8 +1822,25 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
         startResearch,
         ideaGenState,
         setIdeaGenState,
+        chatState,
+        setChatState,
+        sendChatMessage,
+        clearChatHistory,
+        loadChatSession,
+        newChatSession,
         uiSettings,
         refreshSettings,
+        updateTheme,
+        updateLanguage,
+        sidebarWidth,
+        setSidebarWidth,
+        sidebarCollapsed,
+        setSidebarCollapsed,
+        toggleSidebar,
+        sidebarDescription,
+        setSidebarDescription,
+        sidebarNavOrder,
+        setSidebarNavOrder,
       }}
     >
       {children}

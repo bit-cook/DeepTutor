@@ -1,38 +1,69 @@
 # Configuration
 
-DeepTutor uses YAML configuration files for easy customization.
+DeepTutor uses YAML configuration files and environment variables for easy customization.
 
 ## 📁 Configuration Files
 
 ```
 config/
-├── main.yaml              # Main system configuration (all module settings)
+├── main.yaml              # Main system configuration (paths, tools, module settings)
 ├── agents.yaml            # Unified agent parameters (temperature, max_tokens)
 └── README.md              # Full documentation
 ```
 
 | File | Purpose |
-|------|---------|
-| `config/main.yaml` | Server ports, paths, tools, module settings |
+|:-----|:--------|
+| `.env` | API keys, server ports, and service configuration |
 | `config/agents.yaml` | LLM parameters for each agent module |
-| `.env` | API keys and secrets |
+| `config/main.yaml` | Paths, tools, module settings |
 
 ## 🔧 Server Configuration
 
-Edit `config/main.yaml`:
+Server ports are configured in `.env` file:
 
-```yaml
-server:
-  backend_port: 8001
-  frontend_port: 3782
+```bash
+# Server ports (defaults: 8001/3782)
+BACKEND_PORT=8001
+FRONTEND_PORT=3782
 
-system:
-  language: en  # "zh" or "en"
+# Remote access
+NEXT_PUBLIC_API_BASE=http://your-server-ip:8001
+
+# Web search (unified API key)
+SEARCH_PROVIDER=perplexity  # Options: perplexity, tavily, serper, jina, exa, baidu
+SEARCH_API_KEY=your_search_api_key
+
+# TTS
+TTS_MODEL=
+TTS_URL=
+TTS_API_KEY=
 ```
 
-## 🤖 Agent LLM Configuration
+### ☁️ Azure OpenAI Configuration
 
-Each module has unified LLM settings in `config/agents.yaml`:
+When using Azure OpenAI, you must set the `LLM_API_VERSION` and provide the correct endpoint URL including the deployment name.
+
+```bash
+LLM_BINDING=azure_openai
+LLM_MODEL=gpt-4o  # Your Azure deployment name
+LLM_HOST=https://{your-resource}.openai.azure.com/openai/deployments/{deployment-id}
+LLM_API_KEY=your_azure_api_key
+LLM_API_VERSION=2024-02-15-preview  # Required for Azure
+```
+
+Similarly for embeddings:
+
+```bash
+EMBEDDING_BINDING=azure_openai
+EMBEDDING_MODEL=text-embedding-3-large  # Your Azure deployment name
+EMBEDDING_HOST=https://{your-resource}.openai.azure.com/openai/deployments/{deployment-id}
+EMBEDDING_API_KEY=your_azure_api_key
+EMBEDDING_API_VERSION=2024-02-15-preview
+```
+
+## Agent Parameters
+
+Edit `config/agents.yaml`:
 
 ```yaml
 # Solve Module - Problem solving agents
@@ -72,35 +103,75 @@ Create a `.env` file based on `.env.example`:
 
 ```bash
 # ============================================================================
+# Server Configuration
+# ============================================================================
+BACKEND_PORT=8001                         # Backend API port
+FRONTEND_PORT=3782                        # Frontend web port
+
+# For remote/LAN access - set to your server's IP address
+# Example: http://192.168.1.100:8001 (if not set, defaults to localhost)
+# NEXT_PUBLIC_API_BASE=http://your-server-ip:8001
+
+# ============================================================================
 # LLM (Large Language Model) Configuration - Required
 # ============================================================================
-LLM_BINDING=openai                        # Options: openai, azure_openai, ollama
+LLM_BINDING=openai                        # Provider type (see supported list below)
 LLM_MODEL=gpt-4o                          # e.g., gpt-4o, deepseek-chat, qwen-plus
-LLM_BINDING_HOST=https://api.openai.com/v1
-LLM_BINDING_API_KEY=your_api_key
+LLM_HOST=https://api.openai.com/v1
+LLM_API_KEY=your_api_key
+DISABLE_SSL_VERIFY=false                  # Set true for self-signed certificates
 
 # ============================================================================
 # Embedding Model Configuration - Required for Knowledge Base
 # ============================================================================
-EMBEDDING_BINDING=openai
-EMBEDDING_MODEL=text-embedding-3-large    # e.g., text-embedding-3-large, text-embedding-3-small
-EMBEDDING_DIM=3072                        # Important !! Must match model dimensions
-EMBEDDING_BINDING_HOST=https://api.openai.com/v1
-EMBEDDING_BINDING_API_KEY=your_api_key
+EMBEDDING_BINDING=openai                  # Provider type (see supported list below)
+EMBEDDING_MODEL=text-embedding-3-large    # e.g., text-embedding-3-large, nomic-embed-text
+EMBEDDING_DIMENSION=3072                  # Important! Must match model dimensions
+EMBEDDING_HOST=https://api.openai.com/v1
+EMBEDDING_API_KEY=your_api_key
 
 # ============================================================================
-# Optional Features
+# Web Search Configuration - Optional
 # ============================================================================
-# Web Search (Perplexity API)
-PERPLEXITY_API_KEY=your_perplexity_key
+SEARCH_PROVIDER=perplexity                # Options: perplexity, tavily, serper, jina, exa, baidu
+SEARCH_API_KEY=your_search_api_key        # Unified API key for all search providers
 
-# TTS (Text-to-Speech) for Co-Writer narration
+# ============================================================================
+# TTS (Text-to-Speech) Configuration - Optional
+# ============================================================================
 TTS_MODEL=
 TTS_URL=
 TTS_API_KEY=
 ```
 
-> **Note**: Please make sure you have configured the right dimensions. Currently our RAG module uses RAG-Anything, you could further check [its repo](https://github.com/HKUDS/RAG-Anything) for more questions.
+## 🔌 Supported Providers
+
+### LLM Providers
+
+| Provider | `LLM_BINDING` Value | Notes |
+|:---------|:--------------------|:------|
+| OpenAI | `openai` | GPT-4o, GPT-4, GPT-3.5, etc. |
+| Anthropic | `anthropic` | Claude 3.5, Claude 3, etc. |
+| Azure OpenAI | `azure_openai` | Enterprise deployments |
+| Ollama | `ollama` | Local models (auto adds `/v1` suffix) |
+| Groq | `groq` | Fast inference |
+| OpenRouter | `openrouter` | Multi-model gateway |
+| DeepSeek | `deepseek` | DeepSeek-V3, DeepSeek-R1 |
+| Google Gemini | `gemini` | OpenAI-compatible mode |
+
+### Embedding Providers
+
+| Provider | `EMBEDDING_BINDING` Value | Notes |
+|:---------|:--------------------------|:------|
+| OpenAI | `openai` | text-embedding-3-large/small |
+| Azure OpenAI | `azure_openai` | Enterprise deployments |
+| Jina AI | `jina` | jina-embeddings-v3 |
+| Cohere | `cohere` | embed-v3 series |
+| Ollama | `ollama` | Local embedding models |
+| LM Studio | `lm_studio` | Local inference server |
+| HuggingFace | `huggingface` | OpenAI-compatible endpoints |
+
+> **Note**: Ensure that `EMBEDDING_DIMENSION` matches your embedding model's output dimensions. The RAG module uses RAG-Anything—see [the repository](https://github.com/HKUDS/RAG-Anything) for details.
 
 ## 🛠️ Tool Configuration
 
@@ -131,7 +202,7 @@ data/
     ├── solve/                    # Problem solving results
     ├── question/                 # Generated questions
     ├── research/                 # Research reports and cache
-    ├── co-writer/                # Interactive IdeaGen documents
+    ├── co_writer/                # Interactive IdeaGen documents
     ├── notebook/                 # Notebook records
     ├── guide/                    # Guided learning sessions
     ├── logs/                     # System logs

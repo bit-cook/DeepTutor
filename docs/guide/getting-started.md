@@ -1,13 +1,23 @@
-# 🚀 Quick Start
+# Quick Start
 
-## Step 1: Clone Repository and Set Up Environment
+Get DeepTutor running in under 5 minutes.
 
-```bash
-# Clone the repository
+## Prerequisites
+
+- Python 3.10+
+- Node.js 18+
+- An LLM API key (OpenAI, Anthropic, DeepSeek, etc.)
+
+## Installation
+
+::: code-group
+
+```bash [Quick Install]
+# Clone and setup
 git clone https://github.com/HKUDS/DeepTutor.git
 cd DeepTutor
 
-# Set Up Virtual Environment (Choose One Option)
+## Step 1: Set Up Virtual Environment (Choose One Option)
 
 # Option A: Using conda (Recommended)
 conda create -n aitutor python=3.10
@@ -54,7 +64,15 @@ By default, the application uses:
 - **Backend (FastAPI)**: `8001`
 - **Frontend (Next.js)**: `3782`
 
-You can modify these ports in `config/main.yaml` by editing the `server.backend_port` and `server.frontend_port` values.
+You can modify these ports in your `.env` file:
+
+```bash
+BACKEND_PORT=8001
+FRONTEND_PORT=3782
+
+# For remote/LAN access, set your server's IP address:
+# NEXT_PUBLIC_API_BASE=http://192.168.1.100:8001
+```
 
 **LLM Configuration**: Agent settings for `temperature` and `max_tokens` are centralized in `config/agents.yaml`. Each module (guide, solve, research, question, ideagen, co_writer) has customizable parameters. See [Configuration](/guide/configuration) for details.
 
@@ -126,6 +144,6 @@ Create custom knowledge bases through the web interface with support for multipl
 
 ## Next Steps
 
-- [Configuration](/guide/configuration) — Customize your setup
-- [Features Overview](/features/overview) — Explore all features
-- [Troubleshooting](/guide/troubleshooting) — Common issues and solutions
+- [Configuration →](/guide/configuration)
+- [Troubleshooting →](/guide/troubleshooting)
+- [Full Installation Guide →](https://github.com/HKUDS/DeepTutor#-getting-started)

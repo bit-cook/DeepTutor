@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 Knowledge Base Initialization Script
 
@@ -16,26 +17,11 @@ import json
 import os
 from pathlib import Path
 import shutil
-import sys
 
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
-# Add raganything module path
-raganything_path = project_root.parent / "raganything" / "RAG-Anything"
-if raganything_path.exists():
-    sys.path.insert(0, str(raganything_path))
-
-from dotenv import load_dotenv
-from lightrag.llm.openai import openai_complete_if_cache, openai_embed
-from lightrag.utils import EmbeddingFunc
-from raganything import RAGAnything, RAGAnythingConfig
-
-from src.core.core import get_embedding_config, get_llm_config
-
-load_dotenv(dotenv_path=".env", override=False)
-
-# Use unified logging system
-from src.core.logging import LightRAGLogContext, get_logger
+from src.logging import get_logger
+from src.services.embedding import get_embedding_config
+from src.services.llm import get_llm_config
+from src.services.rag.service import RAGService
 
 logger = get_logger("KnowledgeInit")
 
@@ -51,9 +37,10 @@ class KnowledgeBaseInitializer:
         self,
         kb_name: str,
         base_dir="./data/knowledge_bases",
-        api_key: str = None,
-        base_url: str = None,
-        progress_tracker: ProgressTracker = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        progress_tracker: ProgressTracker | None = None,
+        rag_provider: str | None = None,
     ):
         self.kb_name = kb_name
         self.base_dir = Path(base_dir)
@@ -69,25 +56,27 @@ class KnowledgeBaseInitializer:
         self.base_url = base_url
         self.embedding_cfg = get_embedding_config()
         self.progress_tracker = progress_tracker or ProgressTracker(kb_name, self.base_dir)
+        self.rag_provider = rag_provider
 
     def _register_to_config(self):
-        """Register knowledge base to kb_config.json"""
+        """Register KB to kb_config.json (only knowledge_bases list, no default)."""
         config_file = self.base_dir / "kb_config.json"
-
-        # Read existing config
         if config_file.exists():
             try:
                 with open(config_file, encoding="utf-8") as f:
                     config = json.load(f)
             except Exception as e:
-                logger.warning(f"Failed to read config file: {e}, creating new config")
-                config = {"knowledge_bases": {}, "default": None}
+                logger.warning(f"Failed to read config: {e}, creating new")
+                config = {"knowledge_bases": {}}
         else:
-            config = {"knowledge_bases": {}, "default": None}
+            config = {"knowledge_bases": {}}
 
-        # Add new knowledge base
         if "knowledge_bases" not in config:
             config["knowledge_bases"] = {}
+
+        # Remove old "default" field if exists (migration)
+        if "default" in config:
+            del config["default"]
 
         if self.kb_name not in config.get("knowledge_bases", {}):
             config["knowledge_bases"][self.kb_name] = {
@@ -95,19 +84,45 @@ class KnowledgeBaseInitializer:
                 "description": f"Knowledge base: {self.kb_name}",
             }
 
-            # If first knowledge base, set as default
-            if not config.get("default"):
-                config["default"] = self.kb_name
-
-            # Save config
             try:
                 with open(config_file, "w", encoding="utf-8") as f:
                     json.dump(config, indent=2, ensure_ascii=False, fp=f)
                 logger.info("  ✓ Registered to kb_config.json")
             except Exception as e:
-                logger.warning(f"Failed to update config file: {e}")
+                logger.warning(f"Failed to update config: {e}")
         else:
             logger.info("  ✓ Already registered in kb_config.json")
+
+    def _update_metadata_with_provider(self, provider: str):
+        """Update metadata.json and centralized config with the RAG provider used."""
+        metadata_file = self.kb_dir / "metadata.json"
+        try:
+            if metadata_file.exists():
+                with open(metadata_file, encoding="utf-8") as f:
+                    metadata = json.load(f)
+            else:
+                metadata = {}
+
+            metadata["rag_provider"] = provider
+            metadata["last_updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            with open(metadata_file, "w", encoding="utf-8") as f:
+                json.dump(metadata, indent=2, ensure_ascii=False, fp=f)
+
+            logger.info(f"  ✓ Updated metadata with RAG provider: {provider}")
+
+            # Also save to centralized config file
+            try:
+                from src.services.config import get_kb_config_service
+
+                kb_config_service = get_kb_config_service()
+                kb_config_service.set_rag_provider(self.kb_name, provider)
+                logger.info("  ✓ Saved RAG provider to centralized config")
+            except Exception as config_err:
+                logger.warning(f"Failed to save to centralized config: {config_err}")
+
+        except Exception as e:
+            logger.warning(f"Failed to update metadata with provider: {e}")
 
     def create_directory_structure(self):
         """Create knowledge base directory structure"""
@@ -128,6 +143,7 @@ class KnowledgeBaseInitializer:
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "description": f"Knowledge base: {self.kb_name}",
             "version": "1.0",
+            "rag_provider": None,  # Will be set during document processing
         }
 
         metadata_file = self.kb_dir / "metadata.json"
@@ -147,7 +163,7 @@ class KnowledgeBaseInitializer:
         for source in source_files:
             source_path = Path(source)
             if not source_path.exists():
-                logger.warning(f"  ✗ Source file not found: {source}")
+                logger.warning(f"  ⚠ Source file not found: {source}")
                 continue
 
             dest_path = self.raw_dir / source_path.name
@@ -158,11 +174,14 @@ class KnowledgeBaseInitializer:
         return copied_files
 
     async def process_documents(self):
-        """Process documents using RAG-Anything"""
-        logger.info("Processing documents with RAG-Anything...")
+        """Process documents using RAGService with dynamic provider selection"""
+        # Use the provider passed during initialization, or fallback to env var
+        provider = self.rag_provider or os.getenv("RAG_PROVIDER", "raganything")
+        logger.info(f"Processing documents with RAG provider: {provider}")
+
         self.progress_tracker.update(
             ProgressStage.PROCESSING_DOCUMENTS,
-            "Starting to process documents...",
+            f"Starting to process documents with {provider} provider...",
             current=0,
             total=0,
         )
@@ -187,186 +206,71 @@ class KnowledgeBaseInitializer:
             total=len(doc_files),
         )
 
-        # Create RAGAnything configuration
-        config = RAGAnythingConfig(
-            working_dir=str(self.rag_storage_dir),
-            enable_image_processing=True,
-            enable_table_processing=True,
-            enable_equation_processing=True,
+        # Initialize RAGService with the selected provider
+        rag_service = RAGService(
+            kb_base_dir=str(
+                self.base_dir
+            ),  # Base directory for all KBs (e.g., data/knowledge_bases)
+            provider=provider,
         )
 
-        # Get LLM configuration from env_config
-        llm_cfg = get_llm_config()
-        llm_model = llm_cfg["model"]
+        # Convert Path objects to strings for file paths
+        file_paths = [str(doc_file) for doc_file in doc_files]
 
-        # Define LLM model function
-        def llm_model_func(prompt, system_prompt=None, history_messages=[], **kwargs):
-            return openai_complete_if_cache(
-                llm_model,
-                prompt,
-                system_prompt=system_prompt,
-                history_messages=history_messages,
-                api_key=self.api_key,
-                base_url=self.base_url,
-                **kwargs,
+        try:
+            # Process all documents using the RAGService
+            success = await rag_service.initialize(
+                kb_name=self.kb_name,
+                file_paths=file_paths,
+                extract_numbered_items=True,  # Enable numbered items extraction
             )
 
-        # Define vision model function for image processing
-        def vision_model_func(
-            prompt,
-            system_prompt=None,
-            history_messages=[],
-            image_data=None,
-            messages=None,
-            **kwargs,
-        ):
-            # If messages format is provided, use it directly
-            if messages:
-                # Remove 'messages' and other message-related params from kwargs to avoid duplicate parameter
-                clean_kwargs = {
-                    k: v
-                    for k, v in kwargs.items()
-                    if k not in ["messages", "prompt", "system_prompt", "history_messages"]
-                }
-                return openai_complete_if_cache(
-                    llm_model,
-                    prompt="",  # Empty prompt when using messages
-                    system_prompt=None,
-                    history_messages=[],
-                    messages=messages,
-                    api_key=self.api_key,
-                    base_url=self.base_url,
-                    **clean_kwargs,
+            if success:
+                logger.info("✓ Document processing completed!")
+
+                # Update metadata with the RAG provider used
+                self._update_metadata_with_provider(provider)
+
+                self.progress_tracker.update(
+                    ProgressStage.PROCESSING_DOCUMENTS,
+                    "Documents processed successfully",
+                    current=len(doc_files),
+                    total=len(doc_files),
                 )
-            # Traditional single image format
-            if image_data:
-                # Remove message-related params from kwargs to avoid duplicate parameter
-                clean_kwargs = {
-                    k: v
-                    for k, v in kwargs.items()
-                    if k not in ["messages", "prompt", "system_prompt", "history_messages"]
-                }
-                return openai_complete_if_cache(
-                    llm_model,
-                    prompt="",  # Empty prompt when using messages
-                    system_prompt=None,
-                    history_messages=[],
-                    messages=[
-                        {"role": "system", "content": system_prompt} if system_prompt else None,
-                        (
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": prompt},
-                                    {
-                                        "type": "image_url",
-                                        "image_url": {
-                                            "url": f"data:image/jpeg;base64,{image_data}"
-                                        },
-                                    },
-                                ],
-                            }
-                            if image_data
-                            else {"role": "user", "content": prompt}
-                        ),
-                    ],
-                    api_key=self.api_key,
-                    base_url=self.base_url,
-                    **clean_kwargs,
-                )
-            # Pure text format
-            return llm_model_func(prompt, system_prompt, history_messages, **kwargs)
-
-        # Define embedding function
-        embedding_cfg = self.embedding_cfg
-        embedding_api_key = embedding_cfg["api_key"] or self.api_key
-        embedding_base_url = embedding_cfg["base_url"] or self.base_url
-
-        # CRITICAL: Use openai_embed.func to avoid double decoration
-        # openai_embed is already decorated with @wrap_embedding_func_with_attrs
-        # We need to access the unwrapped function to prevent dimension mismatch
-        embedding_func = EmbeddingFunc(
-            embedding_dim=embedding_cfg["dim"],
-            max_token_size=embedding_cfg["max_tokens"],
-            func=lambda texts: openai_embed.func(
-                texts,
-                model=embedding_cfg["model"],
-                api_key=embedding_api_key,
-                base_url=embedding_base_url,
-            ),
-        )
-
-        # Initialize RAGAnything with log forwarding
-        with LightRAGLogContext(scene="knowledge_init"):
-            rag = RAGAnything(
-                config=config,
-                llm_model_func=llm_model_func,
-                vision_model_func=vision_model_func,
-                embedding_func=embedding_func,
-            )
-
-        # Ensure LightRAG is initialized
-        await rag._ensure_lightrag_initialized()
-
-        # Process each document using RAGAnything's process_document_complete
-        for idx, doc_file in enumerate(doc_files, 1):
-            logger.info(f"\nProcessing: {doc_file.name}")
-            self.progress_tracker.update(
-                ProgressStage.PROCESSING_FILE,
-                f"Processing: {doc_file.name}",
-                current=idx,
-                total=len(doc_files),
-                file_name=doc_file.name,
-            )
-
-            try:
-                # Use RAGAnything's process_document_complete method
-                # This method handles document parsing, content extraction, and insertion
-                await rag.process_document_complete(
-                    file_path=str(doc_file),
-                    output_dir=str(self.content_list_dir),
-                    parse_method="auto",
-                )
-                logger.info(f"  ✓ Successfully processed: {doc_file.name}")
-
-                # Content list should be automatically saved in output_dir
-                doc_name = doc_file.stem
-                content_list_file = self.content_list_dir / f"{doc_name}.json"
-                if content_list_file.exists():
-                    logger.info(f"  ✓ Content list saved: {content_list_file.name}")
-
-            except Exception as e:
-                error_msg = str(e)
-                logger.error(f"  ✗ Error processing {doc_file.name}: {error_msg}")
-                import traceback
-
-                logger.error(traceback.format_exc())
+            else:
+                logger.error("Document processing failed")
                 self.progress_tracker.update(
                     ProgressStage.ERROR,
-                    f"Failed to process file: {doc_file.name}",
-                    current=idx,
-                    total=len(doc_files),
-                    file_name=doc_file.name,
-                    error=error_msg,
+                    "Document processing failed",
+                    error="RAG pipeline returned failure",
                 )
 
-        # Copy extracted images
-        rag_images_dir = self.rag_storage_dir / "images"
-        if rag_images_dir.exists():
-            logger.info(f"\nCopying extracted images to {self.images_dir}")
-            for img_file in rag_images_dir.glob("*"):
-                if img_file.is_file():
-                    dest = self.images_dir / img_file.name
-                    shutil.copy2(img_file, dest)
-            logger.info("  ✓ Copied images")
+        except asyncio.TimeoutError:
+            error_msg = "Processing timeout (>10 minutes)"
+            logger.error("✗ Timeout processing documents")
+            logger.error("Possible causes: Large files, slow embedding API, network issues")
+            self.progress_tracker.update(
+                ProgressStage.ERROR,
+                "Timeout processing documents",
+                error=error_msg,
+            )
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"✗ Error processing documents: {error_msg}")
+            import traceback
 
-        logger.info("\n✓ Document processing completed!")
+            logger.error(traceback.format_exc())
+            self.progress_tracker.update(
+                ProgressStage.ERROR,
+                "Failed to process documents",
+                error=error_msg,
+            )
 
-        # Fix structure: flatten nested content_list directories
+        # Fix structure: flatten nested content_list directories (for RAGAnything compatibility)
         await self.fix_structure()
 
         # Display statistics
-        await self.display_statistics(rag)
+        await self.display_statistics_generic()
 
     async def fix_structure(self):
         """
@@ -463,6 +367,11 @@ class KnowledgeBaseInitializer:
             total=0,
         )
 
+        # Get LLM config for credentials
+        llm_cfg = get_llm_config()
+        api_key = self.api_key or llm_cfg.api_key
+        base_url = self.base_url or llm_cfg.base_url
+
         output_file = self.kb_dir / "numbered_items.json"
         content_list_files = sorted(self.content_list_dir.glob("*.json"))
 
@@ -498,8 +407,8 @@ class KnowledgeBaseInitializer:
                 process_content_list(
                     content_list_file=content_list_file,
                     output_file=output_file,
-                    api_key=self.api_key,
-                    base_url=self.base_url,
+                    api_key=api_key,
+                    base_url=base_url,
                     batch_size=batch_size,
                     merge=merge,
                 )
@@ -526,8 +435,12 @@ class KnowledgeBaseInitializer:
                 ProgressStage.ERROR, "Numbered items extraction failed", error=error_msg
             )
 
-    async def display_statistics(self, rag: RAGAnything):
-        """Display knowledge base statistics"""
+    async def display_statistics(self, rag):
+        """Display knowledge base statistics (legacy - for RAGAnything)"""
+        await self.display_statistics_generic()
+
+    async def display_statistics_generic(self):
+        """Display knowledge base statistics (provider-agnostic)"""
         logger.info("\n" + "=" * 50)
         logger.info("Knowledge Base Statistics")
         logger.info("=" * 50)
@@ -541,32 +454,55 @@ class KnowledgeBaseInitializer:
         logger.info(f"Extracted images: {len(image_files)}")
         logger.info(f"Content lists: {len(content_files)}")
 
-        # RAG storage info
-        if hasattr(rag, "lightrag") and rag.lightrag:
+        # Read provider from metadata instead of env var
+        provider = self.rag_provider or os.getenv("RAG_PROVIDER", "raganything")
+
+        # Try to read from metadata.json if available
+        metadata_file = self.kb_dir / "metadata.json"
+        if metadata_file.exists():
             try:
-                # Try to get entity and relation counts
-                entities_file = self.rag_storage_dir / "kv_store_full_entities.json"
-                relations_file = self.rag_storage_dir / "kv_store_full_relations.json"
-                chunks_file = self.rag_storage_dir / "kv_store_text_chunks.json"
+                with open(metadata_file, encoding="utf-8") as f:
+                    metadata = json.load(f)
+                    if "rag_provider" in metadata and metadata["rag_provider"]:
+                        provider = metadata["rag_provider"]
+            except Exception:
+                pass
 
-                if entities_file.exists():
-                    with open(entities_file, encoding="utf-8") as f:
-                        entities = json.load(f)
-                        logger.info(f"Knowledge entities: {len(entities)}")
+        # RAGAnything/LightRAG format
+        entities_file = self.rag_storage_dir / "kv_store_full_entities.json"
+        relations_file = self.rag_storage_dir / "kv_store_full_relations.json"
+        chunks_file = self.rag_storage_dir / "kv_store_text_chunks.json"
 
-                if relations_file.exists():
-                    with open(relations_file, encoding="utf-8") as f:
-                        relations = json.load(f)
-                        logger.info(f"Knowledge relations: {len(relations)}")
+        # LlamaIndex format
+        vector_store_dir = self.base_dir / self.kb_name / "vector_store"
 
-                if chunks_file.exists():
-                    with open(chunks_file, encoding="utf-8") as f:
-                        chunks = json.load(f)
-                        logger.info(f"Text chunks: {len(chunks)}")
+        try:
+            if entities_file.exists():
+                with open(entities_file, encoding="utf-8") as f:
+                    entities = json.load(f)
+                    logger.info(f"Knowledge entities: {len(entities)}")
 
-            except Exception as e:
-                logger.warning(f"Could not retrieve statistics: {e!s}")
+            if relations_file.exists():
+                with open(relations_file, encoding="utf-8") as f:
+                    relations = json.load(f)
+                    logger.info(f"Knowledge relations: {len(relations)}")
 
+            if chunks_file.exists():
+                with open(chunks_file, encoding="utf-8") as f:
+                    chunks = json.load(f)
+                    logger.info(f"Text chunks: {len(chunks)}")
+
+            if vector_store_dir.exists():
+                metadata_file = vector_store_dir / "metadata.json"
+                if metadata_file.exists():
+                    with open(metadata_file, encoding="utf-8") as f:
+                        metadata = json.load(f)
+                        logger.info(f"Vector embeddings: {metadata.get('num_embeddings', 0)}")
+                        logger.info(f"Embedding dimension: {metadata.get('dimension', 0)}")
+        except Exception as e:
+            logger.warning(f"Could not retrieve statistics: {e!s}")
+
+        logger.info(f"Provider used: {provider}")
         logger.info("=" * 50)
 
 
@@ -599,10 +535,8 @@ Example usage:
         default="./knowledge_bases",
         help="Base directory for knowledge bases (default: ./knowledge_bases)",
     )
-    parser.add_argument(
-        "--api-key", default=os.getenv("LLM_BINDING_API_KEY"), help="OpenAI API key"
-    )
-    parser.add_argument("--base-url", default=os.getenv("LLM_BINDING_HOST"), help="API base URL")
+    parser.add_argument("--api-key", default=os.getenv("LLM_API_KEY"), help="OpenAI API key")
+    parser.add_argument("--base-url", default=os.getenv("LLM_HOST"), help="API base URL")
     parser.add_argument(
         "--skip-processing",
         action="store_true",
@@ -625,7 +559,7 @@ Example usage:
     # Check API key
     if not args.skip_processing and not args.api_key:
         logger.error("Error: OpenAI API key required")
-        logger.error("Set LLM_BINDING_API_KEY environment variable or use --api-key option")
+        logger.error("Set LLM_API_KEY environment variable or use --api-key option")
         return
 
     # Collect document files

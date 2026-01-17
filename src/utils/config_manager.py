@@ -1,21 +1,41 @@
+import logging
 import os
 from pathlib import Path
+import tempfile
 from threading import Lock
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
+from dotenv import dotenv_values, load_dotenv
+from pydantic import ValidationError
 import yaml
+
+from ..config.defaults import DEFAULTS
+
+# Use package-relative imports to avoid PYTHONPATH issues
+from ..config.schema import AppConfig, migrate_config
+from ..core.errors import ConfigError
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigManager:
     """
     Thread-safe manager for reading and writing configuration files.
     Primarily manages config/main.yaml and reads .env.
+
+    Governance additions:
+    - Schema validation via pydantic (AppConfig); invalid configs are rejected.
+    - Versioned migrations via migrate_config.
+    - Atomic writes with temp file and os.replace; creates main.yaml.bak.
+    - Single lock guards mtime read, load, and save.
+    - Deterministic YAML dumps; returns deep copies.
+    - Layered env: .env, then .env.local (override), then process env.
     """
 
-    _instance = None
+    _instance: Optional["ConfigManager"] = None
     _lock = Lock()
 
-    def __new__(cls):
+    def __new__(cls, project_root: Optional[Path] = None):
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -23,115 +43,164 @@ class ConfigManager:
                     cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self):
-        if self._initialized:
+    def __init__(self, project_root: Optional[Path] = None):
+        if getattr(self, "_initialized", False):
             return
 
-        self.project_root = Path(__file__).parent.parent.parent
+        self.project_root = project_root or Path(__file__).parent.parent.parent
         self.config_path = self.project_root / "config" / "main.yaml"
-        self._config_cache = None
-        self._last_mtime = 0
+        self._config_cache: Dict[str, Any] = {}
+        self._last_mtime: float = 0.0
         self._initialized = True
+
+        # Layered env loading
+        load_dotenv(dotenv_path=self.project_root / ".env", override=False)
+        load_dotenv(dotenv_path=self.project_root / ".env.local", override=True)
+
+    def _load_env_file(self, path: Path) -> Dict[str, str]:
+        """Load a .env file and return non-None values as strings."""
+        if not path.exists():
+            return {}
+        return {k: str(v) for k, v in dotenv_values(path).items() if v is not None}
+
+    def _read_yaml(self) -> Dict[str, Any]:
+        """Read the main YAML configuration file safely."""
+        if not self.config_path.exists():
+            return {}
+        with open(self.config_path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+
+    def _deep_update(self, target: Dict[str, Any], source: Dict[str, Any]) -> None:
+        for key, value in source.items():
+            if isinstance(value, dict) and isinstance(target.get(key), dict):
+                self._deep_update(target[key], value)
+            else:
+                target[key] = value
+
+    def _validate_and_migrate(self, raw: Dict[str, Any]) -> Dict[str, Any]:
+        merged: Dict[str, Any] = {}
+        self._deep_update(merged, DEFAULTS)
+        self._deep_update(merged, raw)
+        migrated = migrate_config(merged)
+        try:
+            return AppConfig(**migrated).dict()
+        except ValidationError as e:
+            raise ConfigError("Config validation failed", details={"errors": e.errors()})
 
     def load_config(self, force_reload: bool = False) -> Dict[str, Any]:
         """
         Load configuration from main.yaml.
-        Uses caching based on file modification time.
+        Uses caching based on file modification time and validates against schema.
         """
-        if not self.config_path.exists():
-            return {}
+        with self._lock:
+            if not self.config_path.exists():
+                logger.info("Config not found at %s", self.config_path)
+                self._config_cache = {}
+                self._last_mtime = 0
+                return {}
 
-        current_mtime = self.config_path.stat().st_mtime
-
-        if self._config_cache is None or force_reload or current_mtime > self._last_mtime:
-            with self._lock:
+            current_mtime = self.config_path.stat().st_mtime
+            if not self._config_cache or force_reload or current_mtime > self._last_mtime:
                 try:
-                    with open(self.config_path, "r", encoding="utf-8") as f:
-                        self._config_cache = yaml.safe_load(f) or {}
+                    raw = self._read_yaml()
+                    validated = self._validate_and_migrate(raw)
+                    self._config_cache = validated
                     self._last_mtime = current_mtime
+                except ConfigError as ce:
+                    logger.error("%s", ce, extra={"context": getattr(ce, "context", {})})
+                    return {}
                 except Exception as e:
-                    print(f"Error loading config: {e}")
+                    logger.exception("Error loading config: %s", e)
                     return {}
 
-        return self._config_cache.copy()  # Return copy to prevent direct mutation
+            # deep copy via dump/load for immutability
+            return yaml.safe_load(yaml.safe_dump(self._config_cache, sort_keys=False)) or {}
 
     def save_config(self, config: Dict[str, Any]) -> bool:
         """
         Save configuration to main.yaml.
-        Merges provided config with existing one to ensure partial updates work if needed,
-        though usually we expect full section replacements.
+        Deep-merges provided config with existing one; writes atomically.
+        Rejects invalid configs per schema.
         """
         try:
-            # First, load current to ensure we have latest structure
-            current_config = self.load_config(force_reload=True)
-
-            # recursive update strategy could be implemented here if granular updates are needed,
-            # but for now we expect the caller to provide structurally correct data or we just save what's given.
-            # To be safe against partial updates killing unrelated sections, we should assume 'config'
-            # might just contain the sections to update.
-
-            # Simple recursive update helper
-            def deep_update(target, source):
-                for key, value in source.items():
-                    if isinstance(value, dict) and key in target and isinstance(target[key], dict):
-                        deep_update(target[key], value)
-                    else:
-                        target[key] = value
-
-            deep_update(current_config, config)
-
-            # Ensure directory exists
-            self.config_path.parent.mkdir(parents=True, exist_ok=True)
-
             with self._lock:
-                with open(self.config_path, "w", encoding="utf-8") as f:
-                    yaml.safe_dump(
-                        current_config,
-                        f,
-                        default_flow_style=False,
-                        allow_unicode=True,
-                        sort_keys=False,
-                    )
+                current = self.load_config(force_reload=True)
+                self._deep_update(current, config)
+                validated = self._validate_and_migrate(current)
 
-                # Update cache
-                self._config_cache = current_config
-                self._last_mtime = self.config_path.stat().st_mtime
+                self.config_path.parent.mkdir(parents=True, exist_ok=True)
+                yaml_str = yaml.safe_dump(
+                    validated,
+                    default_flow_style=False,
+                    allow_unicode=True,
+                    sort_keys=False,
+                )
 
-            return True
+                # Atomic write with backup
+                fd, tmp_path = tempfile.mkstemp(
+                    prefix="main.yaml.", dir=str(self.config_path.parent)
+                )
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as tmp:
+                        tmp.write(yaml_str)
+                        tmp.flush()
+                        os.fsync(tmp.fileno())
+                    backup_path = self.config_path.with_suffix(".yaml.bak")
+                    if self.config_path.exists():
+                        try:
+                            os.replace(self.config_path, backup_path)
+                        except Exception:
+                            logger.debug("Backup replace failed; continuing.")
+                    os.replace(tmp_path, self.config_path)
+                    self._config_cache = validated
+                    self._last_mtime = self.config_path.stat().st_mtime
+                    return True
+                finally:
+                    if os.path.exists(tmp_path):
+                        try:
+                            os.remove(tmp_path)
+                        except Exception:
+                            pass
+        except ConfigError as ce:
+            logger.error(
+                "Refusing to save invalid config: %s",
+                ce,
+                extra={"context": getattr(ce, "context", {})},
+            )
+            return False
         except Exception as e:
-            print(f"Error saving config: {e}")
+            logger.exception("Error saving config: %s", e)
             return False
 
     def get_env_info(self) -> Dict[str, str]:
         """
-        Read relevant environment variables.
+        Read relevant environment variables using layered .env files and process env.
+        Returns only non-sensitive metadata.
         """
-        # Reload env vars from file could be done here using python-dotenv if needed,
-        # but usually os.environ is populated at startup.
-        # For dynamic .env reading, we might want to read the file directly.
-
-        env_vars = {}
         env_path = self.project_root / ".env"
+        local_path = self.project_root / ".env.local"
+        parsed_env = self._load_env_file(env_path)
+        parsed_env.update(self._load_env_file(local_path))
 
-        if env_path.exists():
-            try:
-                with open(env_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line or line.startswith("#"):
-                            continue
-                        if "=" in line:
-                            key, val = line.split("=", 1)
-                            env_vars[key.strip()] = val.strip().strip('"').strip("'")
-            except Exception:
-                pass
+        def _get(key: str, default: str = "") -> str:
+            return str(parsed_env.get(key) or os.environ.get(key, default))
 
-        # Fallback to os.environ for values not in .env file but set in environment
-        # Specific keys we care about
-        keys_of_interest = ["LLM_MODEL", "OPENAI_API_KEY", "GOOGLE_API_KEY"]  # Add others as needed
-
-        # We might want to mask keys, but returning model name is safe.
         return {
-            "model": env_vars.get("LLM_MODEL", os.environ.get("LLM_MODEL", "Pro/Flash")),
-            # Add other non-sensitive info if needed
+            "model": _get("LLM_MODEL", DEFAULTS.get("llm", {}).get("model", "Pro/Flash")),
         }
+
+    def validate_required_env(self, keys: List[str]) -> Dict[str, List[str]]:
+        env_path = self.project_root / ".env"
+        local_path = self.project_root / ".env.local"
+        parsed_env = self._load_env_file(env_path)
+        parsed_env.update(self._load_env_file(local_path))
+        missing = [k for k in keys if not (parsed_env.get(k) or os.environ.get(k))]
+        if missing:
+            logger.warning("Missing required env keys", extra={"missing": missing})
+        return {"missing": missing}
+
+    @classmethod
+    def reset_for_tests(cls) -> None:
+        """Reset singleton to allow re-initialization in tests with a different project_root."""
+        with cls._lock:
+            cls._instance = None

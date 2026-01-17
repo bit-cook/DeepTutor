@@ -20,16 +20,24 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
+
+      - name: Cache pre-commit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-
 
       - name: Install Python dependencies
         run: |
@@ -41,27 +49,25 @@ jobs:
         run: npm ci
 
       - name: Run pre-commit
-        id: pre-commit
-        run: pre-commit run --all-files --show-diff-on-failure
-        continue-on-error: true
-
-      - name: Provide fix instructions on failure
-        if: steps.pre-commit.outcome == 'failure'
         run: |
-          echo ""
-          echo "╔═══════════════════════════════════════════════════════════════════════════╗"
-          echo "║                     ❌ Pre-commit checks failed!                          ║"
-          echo "╠═══════════════════════════════════════════════════════════════════════════╣"
-          echo "║  Please run the following commands locally to fix formatting issues:      ║"
-          echo "║                                                                           ║"
-          echo "║    pip install pre-commit       # Install pre-commit (if not installed)  ║"
-          echo "║    pre-commit install           # Set up git hooks (recommended)         ║"
-          echo "║    pre-commit run --all-files   # Fix all formatting issues              ║"
-          echo "║                                                                           ║"
-          echo "║  Then commit and push the changes.                                        ║"
-          echo "║                                                                           ║"
-          echo "║  💡 Tip: After running 'pre-commit install', hooks will run              ║"
-          echo "║     automatically on every commit!                                        ║"
-          echo "╚═══════════════════════════════════════════════════════════════════════════╝"
-          echo ""
-          exit 1
+          # Show which hooks will run
+          echo "Running pre-commit hooks..."
+          pre-commit run --all-files --verbose 2>&1 || {
+            echo ""
+            echo "╔═══════════════════════════════════════════════════════════════════════════╗"
+            echo "║                     ❌ Pre-commit checks failed!                          ║"
+            echo "╠═══════════════════════════════════════════════════════════════════════════╣"
+            echo "║  Please run the following commands locally to fix formatting issues:      ║"
+            echo "║                                                                           ║"
+            echo "║    pip install pre-commit       # Install pre-commit (if not installed)  ║"
+            echo "║    pre-commit install           # Set up git hooks (recommended)         ║"
+            echo "║    pre-commit run --all-files   # Fix all formatting issues              ║"
+            echo "║                                                                           ║"
+            echo "║  Then commit and push the changes.                                        ║"
+            echo "║                                                                           ║"
+            echo "║  💡 Tip: After running 'pre-commit install', hooks will run              ║"
+            echo "║     automatically on every commit!                                        ║"
+            echo "╚═══════════════════════════════════════════════════════════════════════════╝"
+            echo ""
+            exit 1
+          }

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 NoteAgent - Recording Agent
 Responsible for information compression and summary generation, converting raw data returned by tools into usable knowledge summaries
@@ -7,22 +8,37 @@ Responsible for information compression and summary generation, converting raw d
 from pathlib import Path
 from string import Template
 import sys
-from typing import Any
+from typing import Any, Optional
 
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+from src.agents.base_agent import BaseAgent
 from src.agents.research.data_structures import ToolTrace
 
 from ..utils.json_utils import extract_json_from_text
-from .base_agent import BaseAgent
 
 
 class NoteAgent(BaseAgent):
     """Recording Agent"""
 
-    def __init__(self, config: dict[str, Any], api_key: str = None, base_url: str = None):
-        super().__init__(config=config, api_key=api_key, base_url=base_url, agent_name="note_agent")
+    def __init__(
+        self,
+        config: dict[str, Any],
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        api_version: Optional[str] = None,
+    ):
+        language = config.get("system", {}).get("language", "zh")
+        super().__init__(
+            module_name="research",
+            agent_name="note_agent",
+            api_key=api_key,
+            base_url=base_url,
+            api_version=api_version,
+            language=language,
+            config=config,
+        )
 
     async def process(
         self,
@@ -64,7 +80,7 @@ class NoteAgent(BaseAgent):
             tool_type=tool_type, query=query, raw_answer=raw_answer, topic=topic, context=context
         )
 
-        print(f"✅ Summary generation completed ({len(summary)} characters)")
+        print(f"✓ Summary generation completed ({len(summary)} characters)")
 
         # Create ToolTrace with the provided citation ID
         tool_id = self._generate_tool_id()

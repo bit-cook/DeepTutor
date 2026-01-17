@@ -247,15 +247,16 @@ cp .env.example .env
 | 変数 | 必須 | 説明 |
 |:---|:---:|:---|
 | `LLM_MODEL` | **はい** | モデル名（例：`gpt-4o`） |
-| `LLM_BINDING_API_KEY` | **はい** | LLM API キー |
-| `LLM_BINDING_HOST` | **はい** | API エンドポイント URL |
+| `LLM_API_KEY` | **はい** | LLM API キー |
+| `LLM_HOST` | **はい** | API エンドポイント URL |
 | `EMBEDDING_MODEL` | **はい** | 埋め込みモデル名 |
-| `EMBEDDING_BINDING_API_KEY` | **はい** | 埋め込み API キー |
-| `EMBEDDING_BINDING_HOST` | **はい** | 埋め込み API エンドポイント |
+| `EMBEDDING_API_KEY` | **はい** | 埋め込み API キー |
+| `EMBEDDING_HOST` | **はい** | 埋め込み API エンドポイント |
 | `BACKEND_PORT` | いいえ | バックエンドポート（デフォルト：`8001`） |
 | `FRONTEND_PORT` | いいえ | フロントエンドポート（デフォルト：`3782`） |
 | `TTS_*` | いいえ | テキスト読み上げ設定 |
-| `PERPLEXITY_API_KEY` | いいえ | ウェブ検索用 |
+| `SEARCH_PROVIDER` | いいえ | 検索プロバイダー（オプション：`perplexity`, `tavily`, `serper`, `jina`, `exa`, `baidu`、デフォルト：`perplexity`）|
+| `SEARCH_API_KEY` | いいえ | 統一検索APIキー |
 
 </details>
 
@@ -309,11 +310,11 @@ cp .env.example .env
 docker run -d --name deeptutor \
   -p 8001:8001 -p 3782:3782 \
   -e LLM_MODEL=gpt-4o \
-  -e LLM_BINDING_API_KEY=your-api-key \
-  -e LLM_BINDING_HOST=https://api.openai.com/v1 \
+  -e LLM_API_KEY=your-api-key \
+  -e LLM_HOST=https://api.openai.com/v1 \
   -e EMBEDDING_MODEL=text-embedding-3-large \
-  -e EMBEDDING_BINDING_API_KEY=your-api-key \
-  -e EMBEDDING_BINDING_HOST=https://api.openai.com/v1 \
+  -e EMBEDDING_API_KEY=your-api-key \
+  -e EMBEDDING_HOST=https://api.openai.com/v1 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/config:/app/config:ro \
   ghcr.io/hkuds/deeptutor:latest
@@ -382,9 +383,11 @@ source venv/bin/activate
 **依存関係をインストール**：
 
 ```bash
-bash scripts/install_all.sh
+# ワンクリックインストール（推奨）
+python scripts/install_all.py
+# または: bash scripts/install_all.sh
 
-# または手動：
+# または手動インストール
 pip install -r requirements.txt
 npm install --prefix web
 ```

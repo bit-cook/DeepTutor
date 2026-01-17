@@ -247,15 +247,16 @@ cp .env.example .env
 | Переменная | Обязательно | Описание |
 |:---|:---:|:---|
 | `LLM_MODEL` | **Да** | Имя модели (например: `gpt-4o`) |
-| `LLM_BINDING_API_KEY` | **Да** | Ваш API ключ LLM |
-| `LLM_BINDING_HOST` | **Да** | URL конечной точки API |
+| `LLM_API_KEY` | **Да** | Ваш API ключ LLM |
+| `LLM_HOST` | **Да** | URL конечной точки API |
 | `EMBEDDING_MODEL` | **Да** | Имя модели встраивания |
-| `EMBEDDING_BINDING_API_KEY` | **Да** | API ключ встраивания |
-| `EMBEDDING_BINDING_HOST` | **Да** | Конечная точка API встраивания |
+| `EMBEDDING_API_KEY` | **Да** | API ключ встраивания |
+| `EMBEDDING_HOST` | **Да** | Конечная точка API встраивания |
 | `BACKEND_PORT` | Нет | Порт backend (по умолчанию: `8001`) |
 | `FRONTEND_PORT` | Нет | Порт frontend (по умолчанию: `3782`) |
 | `TTS_*` | Нет | Настройки синтеза речи |
-| `PERPLEXITY_API_KEY` | Нет | Для веб-поиска |
+| `SEARCH_PROVIDER` | Нет | Провайдер поиска (варианты: `perplexity`, `tavily`, `serper`, `jina`, `exa`, `baidu`, по умолчанию: `perplexity`) |
+| `SEARCH_API_KEY` | Нет | Единый API-ключ для поиска |
 
 </details>
 
@@ -309,11 +310,11 @@ cp .env.example .env
 docker run -d --name deeptutor \
   -p 8001:8001 -p 3782:3782 \
   -e LLM_MODEL=gpt-4o \
-  -e LLM_BINDING_API_KEY=your-api-key \
-  -e LLM_BINDING_HOST=https://api.openai.com/v1 \
+  -e LLM_API_KEY=your-api-key \
+  -e LLM_HOST=https://api.openai.com/v1 \
   -e EMBEDDING_MODEL=text-embedding-3-large \
-  -e EMBEDDING_BINDING_API_KEY=your-api-key \
-  -e EMBEDDING_BINDING_HOST=https://api.openai.com/v1 \
+  -e EMBEDDING_API_KEY=your-api-key \
+  -e EMBEDDING_HOST=https://api.openai.com/v1 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/config:/app/config:ro \
   ghcr.io/hkuds/deeptutor:latest
@@ -382,9 +383,11 @@ source venv/bin/activate
 **Установить Зависимости**:
 
 ```bash
-bash scripts/install_all.sh
+# Установка в один клик (Рекомендуется)
+python scripts/install_all.py
+# Или: bash scripts/install_all.sh
 
-# Или вручную:
+# Или ручная установка
 pip install -r requirements.txt
 npm install --prefix web
 ```

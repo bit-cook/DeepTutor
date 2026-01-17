@@ -6,15 +6,28 @@ Answers user questions while learning specific knowledge points
 
 from typing import Any
 
-from .base_guide_agent import BaseGuideAgent
+from src.agents.base_agent import BaseAgent
 
 
-class ChatAgent(BaseGuideAgent):
+class ChatAgent(BaseAgent):
     """Learning Q&A agent"""
 
-    def __init__(self, api_key: str, base_url: str, language: str = "zh", binding: str = "openai"):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        language: str = "zh",
+        api_version: str | None = None,
+        binding: str = "openai",
+    ):
         super().__init__(
-            api_key=api_key, base_url=base_url, agent_name="chat_agent", language=language, binding=binding
+            module_name="guide",
+            agent_name="chat_agent",
+            api_key=api_key,
+            base_url=base_url,
+            api_version=api_version,
+            language=language,
+            binding=binding,
         )
 
     def _format_chat_history(self, history: list[dict[str, str]]) -> str:

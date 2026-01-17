@@ -1,247 +1,66 @@
 """
-Settings API Router
-Manages user settings: theme, language, environment variables, etc.
+Settings API Router (Simplified)
+================================
+
+Manages basic UI settings: theme, language, sidebar customization.
+Configuration for LLM/Embedding/TTS/Search is handled by the unified config service.
 """
 
 import json
-import os
 from pathlib import Path
-from typing import Any, Dict, Literal
+from typing import List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
-from src.core.core import get_embedding_config, get_llm_config, get_tts_config
-from src.utils.config_manager import ConfigManager
-
 router = APIRouter()
-config_manager = ConfigManager()
 
-# ==================== Environment Variables Configuration ====================
-# Define all supported environment variables with descriptions
-# These variables can be modified at runtime without restarting the server
+# Settings file path for UI preferences (stored in settings folder with other configs)
+SETTINGS_FILE = (
+    Path(__file__).parent.parent.parent.parent / "data" / "user" / "settings" / "interface.json"
+)
 
-ENV_VAR_DEFINITIONS = {
-    # LLM Configuration
-    "LLM_BINDING": {
-        "description": "LLM service provider type (e.g., openai, anthropic, gemini, openrouter, ollama)",
-        "category": "llm",
-        "required": False,
-        "default": "openai",
-        "sensitive": False,
-    },
-    "LLM_MODEL": {
-        "description": "LLM model name (e.g., gpt-4o, deepseek-chat, qwen-plus)",
-        "category": "llm",
-        "required": True,
-        "default": "",
-        "sensitive": False,
-    },
-    "LLM_HOST": {
-        "description": "LLM API endpoint URL (e.g., https://api.openai.com/v1)",
-        "category": "llm",
-        "required": True,
-        "default": "",
-        "sensitive": False,
-    },
-    "LLM_API_KEY": {
-        "description": "LLM API authentication key",
-        "category": "llm",
-        "required": True,
-        "default": "",
-        "sensitive": True,
-    },
-    # Embedding Configuration
-    "EMBEDDING_BINDING": {
-        "description": "Embedding service provider type (openai, ollama, lollms, azure_openai)",
-        "category": "embedding",
-        "required": False,
-        "default": "openai",
-        "sensitive": False,
-    },
-    "EMBEDDING_MODEL": {
-        "description": "Embedding model name (e.g., text-embedding-3-large, text-embedding-ada-002)",
-        "category": "embedding",
-        "required": True,
-        "default": "",
-        "sensitive": False,
-    },
-    "EMBEDDING_DIMENSION": {
-        "description": "Embedding vector dimension (e.g., 3072 for text-embedding-3-large)",
-        "category": "embedding",
-        "required": False,
-        "default": "3072",
-        "sensitive": False,
-    },
-    "EMBEDDING_HOST": {
-        "description": "Embedding API endpoint URL",
-        "category": "embedding",
-        "required": True,
-        "default": "",
-        "sensitive": False,
-    },
-    "EMBEDDING_API_KEY": {
-        "description": "Embedding API authentication key",
-        "category": "embedding",
-        "required": True,
-        "default": "",
-        "sensitive": True,
-    },
-    # TTS Configuration (OpenAI compatible API)
-    "TTS_MODEL": {
-        "description": "OpenAI TTS model (tts-1 for speed, tts-1-hd for quality)",
-        "category": "tts",
-        "required": False,
-        "default": "",
-        "sensitive": False,
-    },
-    "TTS_URL": {
-        "description": "OpenAI compatible API endpoint (e.g., https://api.openai.com/v1)",
-        "category": "tts",
-        "required": False,
-        "default": "",
-        "sensitive": False,
-    },
-    "TTS_API_KEY": {
-        "description": "TTS API authentication key (OpenAI API Key)",
-        "category": "tts",
-        "required": False,
-        "default": "",
-        "sensitive": True,
-    },
-    "TTS_VOICE": {
-        "description": "Default voice: alloy, echo, fable, onyx, nova, shimmer",
-        "category": "tts",
-        "required": False,
-        "default": "alloy",
-        "sensitive": False,
-    },
-    # Web Search Configuration
-    "PERPLEXITY_API_KEY": {
-        "description": "Perplexity API key for web search functionality",
-        "category": "search",
-        "required": False,
-        "default": "",
-        "sensitive": True,
-    },
-    # System Configuration
-    "DISABLE_SSL_VERIFY": {
-        "description": "Disable SSL certificate verification (set 'true' for self-signed certs)",
-        "category": "system",
-        "required": False,
-        "default": "false",
-        "sensitive": False,
-    },
-    "RAG_TOOL_MODULE_LOG_LEVEL": {
-        "description": "Log level for RAG tool module (DEBUG, INFO, WARNING, ERROR)",
-        "category": "system",
-        "required": False,
-        "default": "INFO",
-        "sensitive": False,
-    },
+# Default sidebar navigation order
+DEFAULT_SIDEBAR_NAV_ORDER = {
+    "start": ["/", "/history", "/knowledge", "/notebook"],
+    "learnResearch": ["/question", "/solver", "/guide", "/ideagen", "/research", "/co_writer"],
 }
-
-# Categories for organizing the UI
-ENV_CATEGORIES = {
-    "llm": {
-        "name": "LLM Configuration",
-        "description": "Large Language Model settings for AI reasoning and generation",
-        "icon": "brain",
-    },
-    "embedding": {
-        "name": "Embedding Configuration",
-        "description": "Text embedding model settings for semantic search and RAG",
-        "icon": "database",
-    },
-    "tts": {
-        "name": "TTS Configuration",
-        "description": "Text-to-Speech settings. Currently only supports Alibaba Cloud DashScope.",
-        "icon": "volume",
-    },
-    "search": {
-        "name": "Web Search Configuration",
-        "description": "External search API settings",
-        "icon": "search",
-    },
-    "system": {
-        "name": "System Configuration",
-        "description": "General system settings",
-        "icon": "settings",
-    },
-}
-
-# Settings file path (for local client/UI prefs not appropriate for main.yaml)
-SETTINGS_FILE = Path(__file__).parent.parent.parent.parent / "data" / "user" / "settings.json"
 
 # Default UI settings
 DEFAULT_UI_SETTINGS = {
     "theme": "light",
-    "language": "en",  # Interface language
-    "output_language": "en",  # Output preference (legacy, might move to main.yaml)
+    "language": "en",
+    "sidebar_description": "✨ Data Intelligence Lab @ HKU",
+    "sidebar_nav_order": DEFAULT_SIDEBAR_NAV_ORDER,
 }
+
+
+class SidebarNavOrder(BaseModel):
+    start: List[str]
+    learnResearch: List[str]
 
 
 class UISettings(BaseModel):
     theme: Literal["light", "dark"] = "light"
     language: Literal["zh", "en"] = "en"
-    output_language: Literal["zh", "en"] = "en"
-
-
-class FullSettingsResponse(BaseModel):
-    ui: UISettings
-    config: Dict[str, Any]
-    env: Dict[str, str]
-
-
-# Environment variable models
-class EnvVarInfo(BaseModel):
-    """Information about a single environment variable"""
-
-    key: str
-    value: str
-    description: str
-    category: str
-    required: bool
-    default: str
-    sensitive: bool
-    is_set: bool  # Whether the variable has a non-empty value
-
-
-class EnvCategoryInfo(BaseModel):
-    """Information about an environment variable category"""
-
-    id: str
-    name: str
-    description: str
-    icon: str
-
-
-class EnvConfigResponse(BaseModel):
-    """Response for environment configuration"""
-
-    variables: list[EnvVarInfo]
-    categories: list[EnvCategoryInfo]
-
-
-class EnvVarUpdate(BaseModel):
-    """Single environment variable update"""
-
-    key: str
-    value: str
-
-
-class EnvConfigUpdate(BaseModel):
-    """Batch environment variables update"""
-
-    variables: list[EnvVarUpdate]
-
-
-class ConfigUpdate(BaseModel):
-    config: Dict[str, Any]
+    sidebar_description: Optional[str] = None
+    sidebar_nav_order: Optional[SidebarNavOrder] = None
 
 
 class ThemeUpdate(BaseModel):
     theme: Literal["light", "dark"]
+
+
+class LanguageUpdate(BaseModel):
+    language: Literal["zh", "en"]
+
+
+class SidebarDescriptionUpdate(BaseModel):
+    description: str
+
+
+class SidebarNavOrderUpdate(BaseModel):
+    nav_order: SidebarNavOrder
 
 
 def load_ui_settings() -> dict:
@@ -263,33 +82,10 @@ def save_ui_settings(settings: dict):
         json.dump(settings, f, ensure_ascii=False, indent=2)
 
 
-@router.get("", response_model=FullSettingsResponse)
+@router.get("")
 async def get_settings():
-    """
-    Get all settings:
-    1. UI preferences (theme, etc)
-    2. Backend Configuration (main.yaml)
-    3. Environment Info (models, etc)
-    """
-    ui_settings = load_ui_settings()
-    main_config = config_manager.load_config()
-    env_info = config_manager.get_env_info()
-
-    return {"ui": ui_settings, "config": main_config, "env": env_info}
-
-
-@router.put("/config")
-async def update_config(update: ConfigUpdate):
-    """Update main.yaml configuration"""
-    # Filter out immutable sections if needed (e.g. server port),
-    # but for now we trust `save_config` to handle the merge.
-    # Ideally should validate against a schema.
-
-    success = config_manager.save_config(update.config)
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to save configuration")
-
-    return config_manager.load_config()
+    """Get UI settings."""
+    return {"ui": load_ui_settings()}
 
 
 @router.put("/theme")
@@ -299,6 +95,15 @@ async def update_theme(update: ThemeUpdate):
     current_ui["theme"] = update.theme
     save_ui_settings(current_ui)
     return {"theme": update.theme}
+
+
+@router.put("/language")
+async def update_language(update: LanguageUpdate):
+    """Update UI language"""
+    current_ui = load_ui_settings()
+    current_ui["language"] = update.language
+    save_ui_settings(current_ui)
+    return {"language": update.language}
 
 
 @router.put("/ui")
@@ -329,336 +134,31 @@ async def get_themes():
     }
 
 
-# Legacy/Specific endpoints required by current frontend (will be deprecated/updated)
-# Keeping them for now if needed, or rewriting them to use new logic if frontend calls them.
-# The user wants "Refactor entire backend logic", so I can break old endpoints if I update frontend.
-# But keeping some compatibility or simple redirect is good practice.
-
-
-@router.get("/system-language")
-async def get_system_language():
-    """Get system language from main.yaml"""
-    config = config_manager.load_config()
-    system_config = config.get("system", {})
-    language = system_config.get("language", "en")
-    return {"language": language}
-
-
-class SystemLanguageUpdate(BaseModel):
-    language: Literal["zh", "en"]
-
-
-@router.put("/system-language")
-async def update_system_language(update: SystemLanguageUpdate):
-    """Update system language in main.yaml"""
-    config = config_manager.load_config()
-    if "system" not in config:
-        config["system"] = {}
-    config["system"]["language"] = update.language
-    if config_manager.save_config(config):
-        return {"language": update.language}
-    raise HTTPException(status_code=500, detail="Failed to save system language")
-
-
-@router.get("/config-info")
-async def get_config_info():
-    """Get configuration information (paths, kb settings, etc.)"""
-    config = config_manager.load_config()
-
-    paths = config.get("paths", {})
-    user_data_dir = paths.get("user_data_dir", "./data/user")
-    kb_base_dir = (
-        config.get("tools", {}).get("rag_tool", {}).get("kb_base_dir", "./data/knowledge_bases")
-    )
-    default_kb = config.get("tools", {}).get("rag_tool", {}).get("default_kb", "ai_textbook")
-    workspace = (
-        config.get("tools", {})
-        .get("run_code", {})
-        .get("workspace", "./data/user/run_code_workspace")
-    )
-
+@router.get("/sidebar")
+async def get_sidebar_settings():
+    """Get sidebar customization settings"""
+    current_ui = load_ui_settings()
     return {
-        "kb_base_dir": kb_base_dir,
-        "user_data_dir": user_data_dir,
-        "default_kb": default_kb,
-        "workspace": workspace,
+        "description": current_ui.get(
+            "sidebar_description", DEFAULT_UI_SETTINGS["sidebar_description"]
+        ),
+        "nav_order": current_ui.get("sidebar_nav_order", DEFAULT_UI_SETTINGS["sidebar_nav_order"]),
     }
 
 
-# ==================== Environment Variables API ====================
+@router.put("/sidebar/description")
+async def update_sidebar_description(update: SidebarDescriptionUpdate):
+    """Update sidebar description"""
+    current_ui = load_ui_settings()
+    current_ui["sidebar_description"] = update.description
+    save_ui_settings(current_ui)
+    return {"description": update.description}
 
 
-def _mask_sensitive_value(value: str, sensitive: bool) -> str:
-    """Mask sensitive values for display (show first 4 and last 4 chars)"""
-    if not sensitive or not value:
-        return value
-    if len(value) <= 8:
-        return "*" * len(value)
-    return f"{value[:4]}{'*' * (len(value) - 8)}{value[-4:]}"
-
-
-@router.get("/env", response_model=EnvConfigResponse)
-async def get_env_config():
-    """
-    Get all environment variables configuration.
-
-    Returns current values (with sensitive values masked), descriptions,
-    and category information for the frontend to display.
-
-    Note: This returns the runtime values, which may differ from .env file
-    if they have been updated via the API.
-    """
-    variables = []
-
-    for key, definition in ENV_VAR_DEFINITIONS.items():
-        current_value = os.environ.get(key, definition["default"])
-        is_set = bool(current_value and current_value.strip())
-
-        variables.append(
-            EnvVarInfo(
-                key=key,
-                value=_mask_sensitive_value(current_value, definition["sensitive"]),
-                description=definition["description"],
-                category=definition["category"],
-                required=definition["required"],
-                default=definition["default"],
-                sensitive=definition["sensitive"],
-                is_set=is_set,
-            )
-        )
-
-    categories = [
-        EnvCategoryInfo(id=cat_id, **cat_info) for cat_id, cat_info in ENV_CATEGORIES.items()
-    ]
-
-    return EnvConfigResponse(variables=variables, categories=categories)
-
-
-@router.get("/env/{key}")
-async def get_env_var(key: str):
-    """
-    Get a single environment variable value.
-
-    For sensitive variables, returns masked value.
-    """
-    if key not in ENV_VAR_DEFINITIONS:
-        raise HTTPException(status_code=404, detail=f"Unknown environment variable: {key}")
-
-    definition = ENV_VAR_DEFINITIONS[key]
-    current_value = os.environ.get(key, definition["default"])
-
-    return {
-        "key": key,
-        "value": _mask_sensitive_value(current_value, definition["sensitive"]),
-        "description": definition["description"],
-        "category": definition["category"],
-        "required": definition["required"],
-        "is_set": bool(current_value and current_value.strip()),
-    }
-
-
-
-def _update_dot_env(updates: Dict[str, str], removals: list[str]):
-    """Update variables in .env file preserving comments and structure."""
-    env_path = Path(__file__).parent.parent.parent.parent / ".env"
-    
-    if not env_path.exists():
-        # Create new if doesn't exist
-        with open(env_path, "w", encoding="utf-8") as f:
-            for k, v in updates.items():
-                if " " in v or "#" in v:
-                    f.write(f'{k}="{v}"\n')
-                else:
-                    f.write(f"{k}={v}\n")
-        return
-
-    # Read existing
-    try:
-        with open(env_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-    except Exception as e:
-        print(f"Error reading .env: {e}")
-        return
-
-    new_lines = []
-    processed_keys = set()
-    
-    for line in lines:
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            new_lines.append(line)
-            continue
-            
-        # Parse key
-        if "=" in stripped:
-            key = stripped.split("=")[0].strip()
-            
-            if key in removals:
-                continue # Skip/Remove this line
-                
-            if key in updates:
-                # Update this line
-                val = updates[key]
-                # Simple quoting suggestion
-                if " " in val or "#" in val or '"' in val or "'" in val:
-                     # minimal escape of double quotes
-                     val = val.replace('"', '\\"')
-                     new_lines.append(f'{key}="{val}"\n')
-                else:
-                    new_lines.append(f"{key}={val}\n")
-                processed_keys.add(key)
-                continue
-        
-        new_lines.append(line)
-
-    # Append new keys that weren't found
-    for k, v in updates.items():
-        if k not in processed_keys and k not in removals:
-             if " " in v or "#" in v or '"' in v or "'" in v:
-                 val = v.replace('"', '\\"')
-                 new_lines.append(f'\n{k}="{val}"\n')
-             else:
-                 new_lines.append(f"\n{k}={v}\n")
-
-    # Write back
-    try:
-        with open(env_path, "w", encoding="utf-8") as f:
-            f.writelines(new_lines)
-    except Exception as e:
-        print(f"Error writing .env: {e}")
-
-
-@router.put("/env")
-async def update_env_config(update: EnvConfigUpdate):
-    """
-    Update environment variables at runtime and persist to .env.
-    """
-    updated_vars = []
-    errors = []
-    
-    env_updates = {}
-    env_removals = []
-
-    for var_update in update.variables:
-        key = var_update.key
-        value = var_update.value
-
-        # Validate the variable is known
-        if key not in ENV_VAR_DEFINITIONS:
-            errors.append(f"Unknown environment variable: {key}")
-            continue
-
-        definition = ENV_VAR_DEFINITIONS[key]
-
-        # Skip if value is masked (user didn't change it)
-        if definition["sensitive"] and "*" in value:
-            # Value is masked, skip update
-            continue
-
-        # Update the environment variable
-        if value:
-            os.environ[key] = value
-            env_updates[key] = value
-        elif key in os.environ:
-            # If value is empty and variable exists, remove it
-            del os.environ[key]
-            env_removals.append(key)
-
-        updated_vars.append(key)
-
-    # Persist to .env
-    if env_updates or env_removals:
-        _update_dot_env(env_updates, env_removals)
-
-    if errors:
-        raise HTTPException(status_code=400, detail={"errors": errors, "updated": updated_vars})
-
-    # Return the updated configuration
-    return {
-        "success": True,
-        "updated": updated_vars,
-        "message": f"Updated {len(updated_vars)} environment variables.",
-    }
-
-
-@router.put("/env/{key}")
-async def update_single_env_var(key: str, value: str):
-    """
-    Update a single environment variable at runtime.
-
-    Note: Changes are NOT persisted to .env file.
-    """
-    if key not in ENV_VAR_DEFINITIONS:
-        raise HTTPException(status_code=404, detail=f"Unknown environment variable: {key}")
-
-    definition = ENV_VAR_DEFINITIONS[key]
-
-    # Skip if value is masked (user didn't change it)
-    if definition["sensitive"] and "*" in value:
-        return {"success": False, "message": "Cannot update with masked value"}
-
-    # Update the environment variable
-    if value:
-        os.environ[key] = value
-        _update_dot_env({key: value}, [])
-    elif key in os.environ:
-        del os.environ[key]
-        _update_dot_env({}, [key])
-
-    return {
-        "success": True,
-        "key": key,
-        "message": f"Environment variable {key} updated.",
-    }
-
-
-@router.post("/env/test")
-async def test_env_config():
-    """
-    Test current environment configuration by validating all services.
-
-    Returns the status of each service (LLM, Embedding, TTS).
-    """
-    results = {
-        "llm": {"status": "unknown", "model": None, "error": None},
-        "embedding": {"status": "unknown", "model": None, "error": None},
-        "tts": {"status": "unknown", "model": None, "error": None},
-    }
-
-    # Test LLM configuration
-    try:
-        llm_config = get_llm_config()
-        results["llm"]["model"] = llm_config.get("model")
-        results["llm"]["status"] = "configured"
-    except ValueError as e:
-        results["llm"]["status"] = "not_configured"
-        results["llm"]["error"] = str(e)
-    except Exception as e:
-        results["llm"]["status"] = "error"
-        results["llm"]["error"] = str(e)
-
-    # Test Embedding configuration
-    try:
-        embedding_config = get_embedding_config()
-        results["embedding"]["model"] = embedding_config.get("model")
-        results["embedding"]["status"] = "configured"
-    except ValueError as e:
-        results["embedding"]["status"] = "not_configured"
-        results["embedding"]["error"] = str(e)
-    except Exception as e:
-        results["embedding"]["status"] = "error"
-        results["embedding"]["error"] = str(e)
-
-    # Test TTS configuration
-    try:
-        tts_config = get_tts_config()
-        results["tts"]["model"] = tts_config.get("model")
-        results["tts"]["status"] = "configured"
-    except ValueError as e:
-        results["tts"]["status"] = "not_configured"
-        results["tts"]["error"] = str(e)
-    except Exception as e:
-        results["tts"]["status"] = "error"
-        results["tts"]["error"] = str(e)
-
-    return results
+@router.put("/sidebar/nav-order")
+async def update_sidebar_nav_order(update: SidebarNavOrderUpdate):
+    """Update sidebar navigation order"""
+    current_ui = load_ui_settings()
+    current_ui["sidebar_nav_order"] = update.nav_order.model_dump()
+    save_ui_settings(current_ui)
+    return {"nav_order": update.nav_order.model_dump()}

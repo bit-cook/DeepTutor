@@ -229,15 +229,16 @@ cp .env.example .env
 | Variable | Requis | Description |
 |:---|:---:|:---|
 | `LLM_MODEL` | **Oui** | Nom du modèle (ex: `gpt-4o`) |
-| `LLM_BINDING_API_KEY` | **Oui** | Votre clé API LLM |
-| `LLM_BINDING_HOST` | **Oui** | URL du point de terminaison API |
+| `LLM_API_KEY` | **Oui** | Votre clé API LLM |
+| `LLM_HOST` | **Oui** | URL du point de terminaison API |
 | `EMBEDDING_MODEL` | **Oui** | Nom du modèle d'intégration |
-| `EMBEDDING_BINDING_API_KEY` | **Oui** | Clé API d'intégration |
-| `EMBEDDING_BINDING_HOST` | **Oui** | Point de terminaison API d'intégration |
+| `EMBEDDING_API_KEY` | **Oui** | Clé API d'intégration |
+| `EMBEDDING_HOST` | **Oui** | Point de terminaison API d'intégration |
 | `BACKEND_PORT` | Non | Port backend (par défaut: `8001`) |
 | `FRONTEND_PORT` | Non | Port frontend (par défaut: `3782`) |
 | `TTS_*` | Non | Paramètres de synthèse vocale |
-| `PERPLEXITY_API_KEY` | Non | Pour la recherche web |
+| `SEARCH_PROVIDER` | Non | Fournisseur de recherche (options: `perplexity`, `tavily`, `serper`, `jina`, `exa`, `baidu`, défaut: `perplexity`) |
+| `SEARCH_API_KEY` | Non | Clé API unifiée pour la recherche |
 
 </details>
 
@@ -291,11 +292,11 @@ cp .env.example .env
 docker run -d --name deeptutor \
   -p 8001:8001 -p 3782:3782 \
   -e LLM_MODEL=gpt-4o \
-  -e LLM_BINDING_API_KEY=your-api-key \
-  -e LLM_BINDING_HOST=https://api.openai.com/v1 \
+  -e LLM_API_KEY=your-api-key \
+  -e LLM_HOST=https://api.openai.com/v1 \
   -e EMBEDDING_MODEL=text-embedding-3-large \
-  -e EMBEDDING_BINDING_API_KEY=your-api-key \
-  -e EMBEDDING_BINDING_HOST=https://api.openai.com/v1 \
+  -e EMBEDDING_API_KEY=your-api-key \
+  -e EMBEDDING_HOST=https://api.openai.com/v1 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/config:/app/config:ro \
   ghcr.io/hkuds/deeptutor:latest
@@ -364,9 +365,11 @@ source venv/bin/activate
 **Installer les Dépendances**:
 
 ```bash
-bash scripts/install_all.sh
+# Installation en un clic (Recommandé)
+python scripts/install_all.py
+# Ou: bash scripts/install_all.sh
 
-# Ou manuellement:
+# Ou installation manuelle
 pip install -r requirements.txt
 npm install --prefix web
 ```

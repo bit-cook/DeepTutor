@@ -229,15 +229,16 @@ cp .env.example .env
 | المتغير | مطلوب | الوصف |
 |:---|:---:|:---|
 | `LLM_MODEL` | **نعم** | اسم النموذج (مثال: `gpt-4o`) |
-| `LLM_BINDING_API_KEY` | **نعم** | مفتاح API الخاص بك لـ LLM |
-| `LLM_BINDING_HOST` | **نعم** | عنوان URL لنقطة نهاية API |
+| `LLM_API_KEY` | **نعم** | مفتاح API الخاص بك لـ LLM |
+| `LLM_HOST` | **نعم** | عنوان URL لنقطة نهاية API |
 | `EMBEDDING_MODEL` | **نعم** | اسم نموذج التضمين |
-| `EMBEDDING_BINDING_API_KEY` | **نعم** | مفتاح API للتضمين |
-| `EMBEDDING_BINDING_HOST` | **نعم** | نقطة نهاية API للتضمين |
+| `EMBEDDING_API_KEY` | **نعم** | مفتاح API للتضمين |
+| `EMBEDDING_HOST` | **نعم** | نقطة نهاية API للتضمين |
 | `BACKEND_PORT` | لا | منفذ الخلفية (افتراضي: `8001`) |
 | `FRONTEND_PORT` | لا | منفذ الواجهة الأمامية (افتراضي: `3782`) |
 | `TTS_*` | لا | إعدادات تحويل النص إلى كلام |
-| `PERPLEXITY_API_KEY` | لا | للبحث على الويب |
+| `SEARCH_PROVIDER` | لا | مزود البحث (الخيارات: `perplexity`, `tavily`, `serper`, `jina`, `exa`, `baidu`، الافتراضي: `perplexity`) |
+| `SEARCH_API_KEY` | لا | مفتاح API موحد للبحث |
 
 </details>
 
@@ -291,11 +292,11 @@ cp .env.example .env
 docker run -d --name deeptutor \
   -p 8001:8001 -p 3782:3782 \
   -e LLM_MODEL=gpt-4o \
-  -e LLM_BINDING_API_KEY=your-api-key \
-  -e LLM_BINDING_HOST=https://api.openai.com/v1 \
+  -e LLM_API_KEY=your-api-key \
+  -e LLM_HOST=https://api.openai.com/v1 \
   -e EMBEDDING_MODEL=text-embedding-3-large \
-  -e EMBEDDING_BINDING_API_KEY=your-api-key \
-  -e EMBEDDING_BINDING_HOST=https://api.openai.com/v1 \
+  -e EMBEDDING_API_KEY=your-api-key \
+  -e EMBEDDING_HOST=https://api.openai.com/v1 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/config:/app/config:ro \
   ghcr.io/hkuds/deeptutor:latest
@@ -364,9 +365,11 @@ source venv/bin/activate
 **تثبيت المتطلبات**:
 
 ```bash
-bash scripts/install_all.sh
+# التثبيت بنقرة واحدة (موصى به)
+python scripts/install_all.py
+# أو: bash scripts/install_all.sh
 
-# أو يدوياً:
+# أو التثبيت اليدوي
 pip install -r requirements.txt
 npm install --prefix web
 ```
