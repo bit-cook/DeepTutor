@@ -12,11 +12,11 @@
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](LICENSE)
 
 <p align="center">
-  <a href="https://discord.gg/zpP9cssj"><img src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://discord.gg/eRsjPgMU4t"><img src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
   &nbsp;&nbsp;
   <a href="./Communication.md"><img src="https://img.shields.io/badge/Feishu-Join_Group-00D4AA?style=for-the-badge&logo=feishu&logoColor=white" alt="Feishu"></a>
   &nbsp;&nbsp;
-  <a href="./Communication.md"><img src="https://img.shields.io/badge/WeChat-Join_Group-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="WeChat"></a>
+  <a href="https://github.com/HKUDS/DeepTutor/issues/78"><img src="https://img.shields.io/badge/WeChat-Join_Group-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="WeChat"></a>
 </p>
 
 
@@ -35,13 +35,36 @@
 </div>
 
 ---
-> **[2026.1.3]** Released DeepTutor [v0.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.3.0) - Any feedbacks are welcomed! ❤️
+### 📰 News
 
-> **[2026.1.1]** Join our [Discord Community](https://discord.gg/zpP9cssj) and [GitHub Discussions](https://github.com/HKUDS/DeepTutor/discussions) - shape the future of DeepTutor! 💬
+> **[2026.1.1]** Happy New Year! Join our [Discord Community](https://discord.gg/eRsjPgMU4t), [Wechat Community](https://github.com/HKUDS/DeepTutor/issues/78), or [Discussions](https://github.com/HKUDS/DeepTutor/discussions) - shape the future of DeepTutor! 💬
 
 > **[2025.12.30]** Visit our [Official Website](https://hkuds.github.io/DeepTutor/) for more details!
 
 > **[2025.12.29]** DeepTutor is now live! ✨
+
+### 📦 Releases
+
+> **[2026.1.23]** Release [v0.6.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.6.0) - Frontend session persistence, full Chinese support, Docker deployment updates, and minor bug fixes -- Thanks for all the feedback!
+
+<details>
+<summary>History releases</summary>
+
+> **[2026.1.18]** Release [v0.5.2](https://github.com/HKUDS/DeepTutor/releases/tag/v0.5.1) - Enhance RAG pipeline with Docling support and improve CI/CD workflows with several minor bugs fixed -- Thanks to all the feedbacks!
+
+
+> **[2026.1.15]** Release [v0.5.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.5.0) - Unified LLM & Embedding services, RAG pipeline selection, and major enhancements to Home, History, QuestionGen & Settings modules -- Thanks to all the contributors!
+
+> **[2026.1.9]** Release [v0.4.1](https://github.com/HKUDS/DeepTutor/releases/tag/v0.4.1) with LLM Provider system overhaul, Question Generation robustness improvements, and codebase cleanup - Thanks to all the contributors!
+
+> **[2026.1.9]** Release [v0.4.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.4.0) with new code structure, multiple llm & embeddings support - Thanks to all the contributors!
+
+> **[2026.1.5]** [v0.3.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.3.0) - Unified PromptManager architecture, CI/CD automation & pre-built Docker images on GHCR
+
+> **[2026.1.2]** [v0.2.0](https://github.com/HKUDS/DeepTutor/releases/tag/v0.2.0) - Docker deployment, Next.js 16 & React 19 upgrade, WebSocket security & critical vulnerability fixes
+
+</details>
+
 ---
 
 ## Key Features of DeepTutor
@@ -137,7 +160,7 @@
 </a>
 
 **Deep Research**  
-<sub>Knowledge Extention from Textbook with RAG, Web and Paper-search</sub>
+<sub>Knowledge Extension from Textbook with RAG, Web and Paper-search</sub>
 
 </td>
 <td width="33%" align="center">
@@ -223,11 +246,15 @@
 • **Memory System**: Session state management and citation tracking for contextual continuity.
 
 ## 📋 Todo
-
 > 🌟 Star to follow our future updates!
-- [-] Refactor RAG Module (see [Discussions](https://github.com/HKUDS/DeepTutor/discussions))
-- [ ] Deep-coding from idea generation
-- [ ] Personalized Interaction with Notebook
+- [ x ] Multi-linguistic support
+- [ x ] DeepTutor Community
+- [ x ] Video & Audio file support
+- [ x ] Atomic RAG pipeline customize
+- [ - ] Incremental Knowledge-base Edit
+- [ - ] Personalized Workspace
+- [ - ] DataBase Visualization
+- [ - ] Online Demo
 
 ## 🚀 Getting Started
 
@@ -253,23 +280,30 @@ cp .env.example .env
 | Variable | Required | Description |
 |:---|:---:|:---|
 | `LLM_MODEL` | **Yes** | Model name (e.g., `gpt-4o`) |
-| `LLM_BINDING_API_KEY` | **Yes** | Your LLM API key |
-| `LLM_BINDING_HOST` | **Yes** | API endpoint URL |
+| `LLM_API_VERSION` | No | API version for Azure OpenAI (e.g., `2024-02-15-preview`) |
+| `LLM_API_KEY` | **Yes** | Your LLM API key |
+| `LLM_HOST` | **Yes** | API endpoint URL |
 | `EMBEDDING_MODEL` | **Yes** | Embedding model name |
-| `EMBEDDING_BINDING_API_KEY` | **Yes** | Embedding API key |
-| `EMBEDDING_BINDING_HOST` | **Yes** | Embedding API endpoint |
+| `EMBEDDING_API_VERSION` | No | API version for Azure OpenAI Embeddings |
+| `EMBEDDING_API_KEY` | **Yes** | Embedding API key |
+| `EMBEDDING_HOST` | **Yes** | Embedding API endpoint |
 | `BACKEND_PORT` | No | Backend port (default: `8001`) |
 | `FRONTEND_PORT` | No | Frontend port (default: `3782`) |
+| `NEXT_PUBLIC_API_BASE` | No | **Frontend API URL** - Set this for remote/LAN access (e.g., `http://192.168.1.100:8001`) |
 | `TTS_*` | No | Text-to-Speech settings |
-| `SEARCH_PROVIDER` | No | Search provider (options: `perplexity`, `baidu`, default: `perplexity`) |
-| `PERPLEXITY_API_KEY` | No | For Perplexity web search |
-| `BAIDU_API_KEY` | No | For Baidu AI search |
+| `SEARCH_PROVIDER` | No | Search provider (options: `perplexity`, `tavily`, `serper`, `jina`, `exa`, `baidu`, default: `perplexity`) |
+| `SEARCH_API_KEY` | No | Unified API key for all search providers |
+
+> 💡 **Remote Access**: If accessing from another device (e.g., `192.168.31.66:3782`), add to `.env`:
+> ```bash
+> NEXT_PUBLIC_API_BASE=http://192.168.31.66:8001
+> ```
 
 </details>
 
 **③ Configure Ports & LLM** *(Optional)*
 
-- **Ports**: Edit `config/main.yaml` → `server.backend_port` / `server.frontend_port`
+- **Ports**: Set in `.env` file → `BACKEND_PORT` / `FRONTEND_PORT` (defaults: 8001/3782)
 - **LLM**: Edit `config/agents.yaml` → `temperature` / `max_tokens` per module
 - See [Configuration Docs](config/README.md) for details
 
@@ -298,133 +332,145 @@ cp .env.example .env
 
 ### Step 2: Choose Your Installation Method
 
-<table>
-<tr>
-<td width="50%" valign="top">
+#### 🐳 Option A: Docker Deployment
 
-<h3 align="center">🐳 Docker Deployment</h3>
-<p align="center"><b>Recommended</b> — No Python/Node.js setup</p>
-
----
+> No Python/Node.js setup required
 
 **Prerequisites**: [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](https://docs.docker.com/compose/install/)
 
-<details open>
-<summary><b>🚀 Option A: Pre-built Image (Fastest)</b></summary>
+**Quick Start** — Build from source:
 
 ```bash
-# Pull and run pre-built image (Linux/macOS)
-docker run -d --name deeptutor \
-  -p 8001:8001 -p 3782:3782 \
-  -e LLM_MODEL=gpt-4o \
-  -e LLM_BINDING_API_KEY=your-api-key \
-  -e LLM_BINDING_HOST=https://api.openai.com/v1 \
-  -e EMBEDDING_MODEL=text-embedding-3-large \
-  -e EMBEDDING_BINDING_API_KEY=your-api-key \
-  -e EMBEDDING_BINDING_HOST=https://api.openai.com/v1 \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/config:/app/config:ro \
-  ghcr.io/hkuds/deeptutor:latest
-
-# Windows PowerShell: use ${PWD} instead of $(pwd)
-docker run -d --name deeptutor `
-  -p 8001:8001 -p 3782:3782 `
-  -e LLM_MODEL=gpt-4o `
-  -e LLM_BINDING_API_KEY=your-api-key `
-  -e LLM_BINDING_HOST=https://api.openai.com/v1 `
-  -e EMBEDDING_MODEL=text-embedding-3-large `
-  -e EMBEDDING_BINDING_API_KEY=your-api-key `
-  -e EMBEDDING_BINDING_HOST=https://api.openai.com/v1 `
-  -v ${PWD}/data:/app/data `
-  -v ${PWD}/config:/app/config:ro `
-  ghcr.io/hkuds/deeptutor:latest
+docker compose up                  # Build and start (~11 min first run on mac mini M4)
+docker compose build --no-cache    # Clear cache and rebuild after pull the newest repo
 ```
 
-Or use with `.env` file:
+**Or use pre-built image** (faster):
 
 ```bash
+# Works on all platforms - Docker auto-detects your architecture
 docker run -d --name deeptutor \
   -p 8001:8001 -p 3782:3782 \
   --env-file .env \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/config:/app/config:ro \
   ghcr.io/hkuds/deeptutor:latest
+
+# Windows PowerShell: use ${PWD} instead of $(pwd)
 ```
 
-</details>
-
-<details>
-<summary><b>🔨 Option B: Build from Source</b></summary>
-
-```bash
-# Build and start (~5-10 min first run)
-docker compose up --build -d
-
-# View logs
-docker compose logs -f
-```
-
-</details>
-
-**Commands**:
+**Common Commands**:
 
 ```bash
 docker compose up -d      # Start
-docker compose logs -f    # Logs
 docker compose down       # Stop
-docker compose up --build # Rebuild
-docker pull ghcr.io/hkuds/deeptutor:latest  # Update image
+docker compose logs -f    # View logs
+docker compose up --build # Rebuild after changes
 ```
 
-> **Dev Mode**: Add `-f docker-compose.dev.yml`
+<details>
+<summary>📋 <b>More Docker Options</b> (Pre-built images, Cloud deployment, Custom ports)</summary>
 
-</td>
-<td width="50%" valign="top">
+**Pre-built Image Tags:**
 
-<h3 align="center">💻 Manual Installation</h3>
-<p align="center">For development or non-Docker environments</p>
+| Tag | Architectures | Description |
+|:----|:--------------|:------------|
+| `:latest` | AMD64 + ARM64 | Latest stable release (auto-detects your architecture) |
+| `:v0.5.x` | AMD64 + ARM64 | Specific version (auto-detects your architecture) |
+| `:v0.5.x-amd64` | AMD64 only | Explicit AMD64 image |
+| `:v0.5.x-arm64` | ARM64 only | Explicit ARM64 image |
+
+> 💡 The `:latest` tag is a **multi-architecture image** — Docker automatically pulls the correct version for your system (Intel/AMD or Apple Silicon/ARM)
+
+**Cloud Deployment** — Must set external API URL:
+
+```bash
+docker run -d --name deeptutor \
+  -p 8001:8001 -p 3782:3782 \
+  -e NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:8001 \
+  --env-file .env \
+  -v $(pwd)/data:/app/data \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+**Custom Ports Example:**
+
+```bash
+docker run -d --name deeptutor \
+  -p 9001:9001 -p 3000:3000 \
+  -e BACKEND_PORT=9001 \
+  -e FRONTEND_PORT=3000 \
+  -e NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:9001 \
+  --env-file .env \
+  -v $(pwd)/data:/app/data \
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+</details>
 
 ---
 
+#### 💻 Option B: Manual Installation
+
+> For development or non-Docker environments
+
 **Prerequisites**: Python 3.10+, Node.js 18+
 
-**Set Up Environment**:
+**1. Set Up Environment**:
 
 ```bash
 # Using conda (Recommended)
-conda create -n deeptutor python=3.10
-conda activate deeptutor
+conda create -n deeptutor python=3.10 && conda activate deeptutor
 
 # Or using venv
-python -m venv venv
-source venv/bin/activate
+python -m venv venv && source venv/bin/activate  # Windows: venv\Scripts\activate
 ```
 
-**Install Dependencies**:
+**2. Install Dependencies**:
 
 ```bash
-bash scripts/install_all.sh
+# One-click installation (Recommended)
+python scripts/install_all.py
+# Or: bash scripts/install_all.sh
 
-# Or manually:
+# Or manual installation
 pip install -r requirements.txt
 npm install --prefix web
 ```
 
-**Launch**:
+**3. Launch**:
 
 ```bash
-# Start web interface
-python scripts/start_web.py
-
-# Or CLI only
-python scripts/start.py
-
+python scripts/start_web.py    # Start frontend + backend
+# Or: python scripts/start.py  # CLI only
 # Stop: Ctrl+C
 ```
 
-</td>
-</tr>
-</table>
+<details>
+<summary>🔧 <b>Start Frontend & Backend Separately</b></summary>
+
+**Backend** (FastAPI):
+```bash
+python src/api/run_server.py
+# Or: uvicorn src.api.main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+**Frontend** (Next.js):
+```bash
+cd web && npm install && npm run dev -- -p 3782
+```
+
+**Note**: Create `web/.env.local`:
+```bash
+NEXT_PUBLIC_API_BASE=http://localhost:8001
+```
+
+| Service | Default Port |
+|:---:|:---:|
+| Backend | `8001` |
+| Frontend | `3782` |
+
+</details>
 
 ### Access URLs
 
@@ -1146,11 +1192,11 @@ asyncio.run(main())
 **Checklist**
 - Confirm Python version >= 3.10
 - Confirm all dependencies installed: `pip install -r requirements.txt`
-- Check if port 8001 is in use (configurable in `config/main.yaml`)
+- Check if port 8001 is in use
 - Check `.env` file configuration
 
 **Solutions**
-- **Change port**: Edit `config/main.yaml` server.backend_port
+- **Change port**: Set `BACKEND_PORT=9001` in `.env` file
 - **Check logs**: Review terminal error messages
 
 </details>
@@ -1216,6 +1262,29 @@ npm --version   # Should show version number
 </details>
 
 <details>
+<summary><b>Long path names on Windows installation?</b></summary>
+
+**Problem**
+
+On Windows, you may encounter errors related to long file paths during installation, such as "The filename or extension is too long" or similar path length issues.
+
+**Cause**
+
+Windows has a default limitation on path lengths (260 characters), which can be exceeded by DeepTutor's nested directory structures and dependencies.
+
+**Solution**
+
+Enable long path support system-wide by running the following command in an Administrator Command Prompt:
+
+```cmd
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f
+```
+
+After running this command, restart your terminal for the changes to take effect.
+
+</details>
+
+<details>
 <summary><b>Frontend cannot connect to backend?</b></summary>
 
 **Checklist**
@@ -1233,6 +1302,62 @@ NEXT_PUBLIC_API_BASE=http://localhost:8001
 </details>
 
 <details>
+<summary><b>Docker: Frontend cannot connect in cloud deployment?</b></summary>
+
+**Problem**
+
+When deploying to a cloud server, the frontend shows connection errors like "Failed to fetch" or "NEXT_PUBLIC_API_BASE is not configured".
+
+**Cause**
+
+The default API URL is `localhost:8001`, which points to the user's local machine in the browser, not your server.
+
+**Solution**
+
+Set the `NEXT_PUBLIC_API_BASE_EXTERNAL` environment variable to your server's public URL:
+
+```bash
+# Using docker run
+docker run -d --name deeptutor \
+  -e NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:8001 \
+  ... other options ...
+  ghcr.io/hkuds/deeptutor:latest
+
+# Or in .env file
+NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:8001
+```
+
+**Custom Port Example:**
+```bash
+# If using backend port 9001
+-e BACKEND_PORT=9001 \
+-e NEXT_PUBLIC_API_BASE_EXTERNAL=https://your-server.com:9001
+```
+
+</details>
+
+<details>
+<summary><b>Docker: How to use custom ports?</b></summary>
+
+**Solution**
+
+Set both the port environment variables AND the port mappings:
+
+```bash
+docker run -d --name deeptutor \
+  -p 9001:9001 -p 4000:4000 \
+  -e BACKEND_PORT=9001 \
+  -e FRONTEND_PORT=4000 \
+  -e NEXT_PUBLIC_API_BASE_EXTERNAL=http://localhost:9001 \
+  ... other env vars ...
+  ghcr.io/hkuds/deeptutor:latest
+```
+
+**Important**: The `-p` port mapping must match the `BACKEND_PORT`/`FRONTEND_PORT` values.
+
+</details>
+
+<details>
 <summary><b>WebSocket connection fails?</b></summary>
 
 **Checklist**
@@ -1243,6 +1368,66 @@ NEXT_PUBLIC_API_BASE=http://localhost:8001
 **Solution**
 - **Check backend logs**
 - **Confirm URL format**: `ws://localhost:8001/api/v1/...`
+
+</details>
+
+<details>
+<summary><b>Settings page shows "Error loading data" with HTTPS reverse proxy?</b></summary>
+
+**Problem**
+
+When deploying behind an HTTPS reverse proxy (e.g., nginx), the Settings page shows "Error loading data" and browser DevTools reveals that HTTPS requests are being redirected to HTTP (307 redirect).
+
+**Cause**
+
+This issue has been fixed in v0.5.0+. If you're using an older version, the problem was caused by FastAPI's automatic trailing slash redirects generating HTTP URLs instead of preserving the original HTTPS protocol.
+
+**Solution (for v0.5.0+)**
+
+Update to the latest version. The fix disables automatic slash redirects to prevent protocol downgrade.
+
+**Recommended nginx Configuration**
+
+When using nginx as an HTTPS reverse proxy, use the following configuration:
+
+```nginx
+# Frontend
+location / {
+    proxy_pass http://localhost:3782;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# Backend API
+location /api/ {
+    proxy_pass http://localhost:8001;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;  # Important: preserves original protocol
+}
+
+# WebSocket support
+location /api/v1/ {
+    proxy_pass http://localhost:8001;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+**Environment Variable**
+
+Set in `.env`:
+```bash
+NEXT_PUBLIC_API_BASE=https://your-domain.com:port
+```
+
+See: [GitHub Issue #112](https://github.com/HKUDS/DeepTutor/issues/112)
 
 </details>
 
@@ -1351,7 +1536,7 @@ This will extract numbered items (Definitions, Theorems, Equations, etc.) from y
 We hope DeepTutor could become a gift for the community. 🎁
 
 <a href="https://github.com/HKUDS/DeepTutor/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=HKUDS/DeepTutor" />
+  <img src="https://contrib.rocks/image?repo=HKUDS/DeepTutor&max=999" alt="Contributors to HKUDS/DeepTutor" />
 </a>
 
 </div>
@@ -1372,8 +1557,9 @@ We hope DeepTutor could become a gift for the community. 🎁
 
 This project is licensed under the ***[AGPL-3.0 License](LICENSE)***.
 
-*✨ Thanks for visiting **DeepTutor**!*
-
-<img src="https://visitor-badge.laobi.icu/badge?page_id=HKUDS.DeepTutor&style=for-the-badge&color=00d4ff" alt="Views">
+<p align="center">
+  <em> Thanks for visiting ✨ DeepTutor!</em><br><br>
+  <img src="https://visitor-badge.laobi.icu/badge?page_id=HKUDS.DeepTutor&style=for-the-badge&color=00d4ff" alt="Views">
+</p>
 
 </div>

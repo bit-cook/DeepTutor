@@ -5,17 +5,30 @@ Analyzes notebook content and generates progressive knowledge point learning pla
 """
 
 import json
-from typing import Any
+from typing import Any, Optional
 
-from .base_guide_agent import BaseGuideAgent
+from src.agents.base_agent import BaseAgent
 
 
-class LocateAgent(BaseGuideAgent):
+class LocateAgent(BaseAgent):
     """Knowledge point location agent"""
 
-    def __init__(self, api_key: str, base_url: str, language: str = "zh", binding: str = "openai"):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        language: str = "zh",
+        api_version: Optional[str] = None,
+        binding: str = "openai",
+    ):
         super().__init__(
-            api_key=api_key, base_url=base_url, agent_name="locate_agent", language=language, binding=binding
+            module_name="guide",
+            agent_name="locate_agent",
+            api_key=api_key,
+            base_url=base_url,
+            api_version=api_version,
+            language=language,
+            binding=binding,
         )
 
     def _format_records(self, records: list[dict[str, Any]]) -> str:

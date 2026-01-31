@@ -15,13 +15,15 @@ project_root = Path(__file__).parent.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from src.agents.ideagen.base_idea_agent import BaseIdeaAgent
+from src.agents.base_agent import BaseAgent
 from src.agents.ideagen.idea_generation_workflow import IdeaGenerationWorkflow
 from src.agents.ideagen.material_organizer_agent import MaterialOrganizerAgent
 from src.api.utils.notebook_manager import NotebookManager
 from src.api.utils.task_id_manager import TaskIDManager
-from src.core.core import get_llm_config, load_config_with_main
-from src.core.logging import get_logger
+from src.logging import get_logger
+from src.services.config import load_config_with_main
+from src.services.llm import get_llm_config
+from src.services.settings.interface_settings import get_ui_language
 
 router = APIRouter()
 
@@ -143,10 +145,11 @@ async def websocket_ideagen(websocket: WebSocket):
         )
 
         # Reset LLM stats for this session
-        BaseIdeaAgent.reset_stats()
+        BaseAgent.reset_stats("ideagen")
 
         # Get LLM configuration
         llm_config = get_llm_config()
+        ui_language = get_ui_language(default=config.get("system", {}).get("language", "en"))
 
         # Get records
         records = []
@@ -168,37 +171,60 @@ async def websocket_ideagen(websocket: WebSocket):
             if record_ids:
                 records = [r for r in records if r.get("id") in record_ids]
             logger.info(f"Loaded {len(records)} records from notebook")
-        else:
+
+        # Check if we have either records or user_thoughts
+        if not records and not user_thoughts:
             await send_status(
-                websocket, IdeaGenStage.ERROR, "Missing notebook_id or records", task_id=task_id
+                websocket,
+                IdeaGenStage.ERROR,
+                "Please provide notebook records or describe your research topic",
+                task_id=task_id,
             )
             await websocket.close()
             return
 
-        if not records:
-            await send_status(websocket, IdeaGenStage.ERROR, "No records found", task_id=task_id)
-            await websocket.close()
-            return
-
         # ========== Stage 2: EXTRACTING ==========
-        await send_status(
-            websocket,
-            IdeaGenStage.EXTRACTING,
-            f"Extracting knowledge points from {len(records)} records...",
-            {"record_count": len(records)},
-            task_id=task_id,
-        )
+        # If we have records, extract knowledge points from them
+        # If only user_thoughts, create a virtual knowledge point from the text
+        if records:
+            await send_status(
+                websocket,
+                IdeaGenStage.EXTRACTING,
+                f"Extracting knowledge points from {len(records)} records...",
+                {"record_count": len(records)},
+                task_id=task_id,
+            )
 
-        organizer = MaterialOrganizerAgent(
-            api_key=llm_config["api_key"],
-            base_url=llm_config["base_url"],
-            model=llm_config["model"],
-        )
+            organizer = MaterialOrganizerAgent(
+                api_key=llm_config.api_key,
+                base_url=llm_config.base_url,
+                api_version=getattr(llm_config, "api_version", None),
+                model=llm_config.model,
+                language=ui_language,
+            )
 
-        knowledge_points = await organizer.process(
-            records, user_thoughts if user_thoughts else None
-        )
-        logger.info(f"Extracted {len(knowledge_points)} knowledge points")
+            knowledge_points = await organizer.process(
+                records, user_thoughts if user_thoughts else None
+            )
+            logger.info(f"Extracted {len(knowledge_points)} knowledge points")
+        else:
+            # Text-only mode: create virtual knowledge point from user_thoughts
+            await send_status(
+                websocket,
+                IdeaGenStage.EXTRACTING,
+                "Processing your research topic description...",
+                {"record_count": 0, "text_only_mode": True},
+                task_id=task_id,
+            )
+
+            # Create a virtual knowledge point from user_thoughts
+            knowledge_points = [
+                {
+                    "knowledge_point": "User Research Topic",
+                    "description": user_thoughts.strip(),
+                }
+            ]
+            logger.info("Created virtual knowledge point from user thoughts (text-only mode)")
 
         # ========== Stage 3: KNOWLEDGE_EXTRACTED ==========
         await send_status(
@@ -230,10 +256,12 @@ async def websocket_ideagen(websocket: WebSocket):
         )
 
         workflow = IdeaGenerationWorkflow(
-            api_key=llm_config["api_key"],
-            base_url=llm_config["base_url"],
-            model=llm_config["model"],
+            api_key=llm_config.api_key,
+            base_url=llm_config.base_url,
+            api_version=getattr(llm_config, "api_version", None),
+            model=llm_config.model,
             progress_callback=None,  # We manually manage status here
+            language=ui_language,
         )
 
         filtered_points = await workflow.loose_filter(knowledge_points)
@@ -371,7 +399,7 @@ async def websocket_ideagen(websocket: WebSocket):
         )
 
         # Print LLM usage stats
-        BaseIdeaAgent.print_stats()
+        BaseAgent.print_stats("ideagen")
 
         # Update task status
         task_manager.update_task_status(task_id, "completed")
@@ -388,6 +416,9 @@ async def websocket_ideagen(websocket: WebSocket):
             task_manager.update_task_status(task_id, "error", error=str(e))
 
         try:
+            # Send unified error message via send_status
+            # Note: send_status sends {"type": "status", "stage": "error", ...}
+            # which is the standard format for this WebSocket protocol
             await send_status(
                 websocket,
                 IdeaGenStage.ERROR,

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 ManagerAgent - Manager (Refactored: directly plans step-level solution steps)
 Based on user question and knowledge chain, plans solution steps
@@ -12,7 +13,8 @@ from typing import Any
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from ..base_agent import BaseAgent
+from src.agents.base_agent import BaseAgent
+
 from ..memory import InvestigateMemory, SolveChainStep, SolveMemory
 from ..utils.json_utils import extract_json_from_text
 
@@ -20,12 +22,23 @@ from ..utils.json_utils import extract_json_from_text
 class ManagerAgent(BaseAgent):
     """Manager Agent - Plans solution steps"""
 
-    def __init__(self, config: dict[str, Any], api_key: str, base_url: str, token_tracker=None):
+    def __init__(
+        self,
+        config: dict[str, Any],
+        api_key: str,
+        base_url: str,
+        api_version: str | None = None,
+        token_tracker=None,
+    ):
+        language = config.get("system", {}).get("language", "zh")
         super().__init__(
-            config=config,
+            module_name="solve",
+            agent_name="manager_agent",
             api_key=api_key,
             base_url=base_url,
-            agent_name="manager_agent",
+            api_version=api_version,
+            language=language,
+            config=config,
             token_tracker=token_tracker,
         )
 
@@ -177,7 +190,7 @@ class ManagerAgent(BaseAgent):
             raise ValueError(f"'steps' field in JSON is not an array. Parsed result: {parsed_data}")
 
         if not steps_data:
-            raise ValueError("'steps' array in JSON is empty, please check LLM output.")
+            raise ValueError("'steps' array in JSON is empty, please check LLM output")
 
         # Parse each step
         for idx, step_data in enumerate(steps_data, 1):
@@ -247,7 +260,7 @@ class ManagerAgent(BaseAgent):
             )
 
         if not steps:
-            raise ValueError("Failed to parse any valid steps, please check LLM output format.")
+            raise ValueError("Failed to parse any valid steps, please check LLM output format")
 
         logger = getattr(self, "logger", None)
         if logger is not None:

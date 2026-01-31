@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 RephraseAgent - Topic rephrasing Agent
 Responsible for rephrasing and optimizing user input
@@ -11,16 +12,30 @@ from typing import Any
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+from src.agents.base_agent import BaseAgent
+
 from ..utils.json_utils import extract_json_from_text
-from .base_agent import BaseAgent
 
 
 class RephraseAgent(BaseAgent):
     """Topic rephrasing Agent"""
 
-    def __init__(self, config: dict[str, Any], api_key: str = None, base_url: str = None):
+    def __init__(
+        self,
+        config: dict[str, Any],
+        api_key: str | None = None,
+        base_url: str | None = None,
+        api_version: str | None = None,
+    ):
+        language = config.get("system", {}).get("language", "zh")
         super().__init__(
-            config=config, api_key=api_key, base_url=base_url, agent_name="rephrase_agent"
+            module_name="research",
+            agent_name="rephrase_agent",
+            api_key=api_key,
+            base_url=base_url,
+            api_version=api_version,
+            language=language,
+            config=config,
         )
         # Store complete conversation history for multi-turn optimization
         self.conversation_history: list[dict[str, Any]] = []
@@ -150,7 +165,7 @@ class RephraseAgent(BaseAgent):
             }
         )
 
-        print("\n✅ Rephrasing Completed:")
+        print("\n✓ Rephrasing Completed:")
         print(f"  Optimized Research Topic: {result.get('topic', '')}")
 
         return result

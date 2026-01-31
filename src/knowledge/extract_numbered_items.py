@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
 Extract numbered important content from knowledge base content_list
 Such as: Definition 1.5., Proposition 1.3., Theorem x.x., Equation x.x., Formula x.x., etc.
@@ -18,18 +19,22 @@ from typing import Any
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from dotenv import load_dotenv
-from lightrag.llm.openai import openai_complete_if_cache
 
-from src.core.core import get_llm_config
+from src.services.llm import get_llm_client, get_llm_config
 
 load_dotenv(dotenv_path=".env", override=False)
 
 # Use project unified logging system
+import logging as std_logging
+
+# Logger can be either custom Logger or standard logging.Logger
+logger: Any  # Use Any to allow both types
+
 try:
     from pathlib import Path
 
-    from src.core.core import load_config_with_main
-    from src.core.logging import get_logger
+    from src.logging import get_logger
+    from src.services.config import load_config_with_main
 
     project_root = Path(__file__).parent.parent.parent.parent
     config = load_config_with_main(
@@ -41,11 +46,9 @@ try:
     logger = get_logger("Knowledge", log_dir=log_dir)
 except ImportError:
     # If import fails, use basic logging
-    import logging
-
-    logger = logging.getLogger("knowledge_init.extract_items")
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+    logger = std_logging.getLogger("knowledge_init.extract_items")
+    std_logging.basicConfig(
+        level=std_logging.INFO, format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
     )
 
 
@@ -58,18 +61,18 @@ async def _call_llm_async(
     temperature: float = 0.1,
     model: str = None,
 ) -> str:
-    """Asynchronously call LLM"""
-    # If model not specified, get from env_config
-    if model is None:
-        llm_cfg = get_llm_config()
-        model = llm_cfg["model"]
+    """Asynchronously call LLM using unified LLM service"""
+    # Get unified LLM client (handles all provider differences and env var setup)
+    llm_client = get_llm_client()
+    llm_model_func = llm_client.get_model_func()
 
-    result = openai_complete_if_cache(
-        model,
+    # If model not specified, use configured model
+    if model is None:
+        model = llm_client.config.model
+
+    result = llm_model_func(
         prompt,
         system_prompt=system_prompt,
-        api_key=api_key,
-        base_url=base_url,
         max_tokens=max_tokens,
         temperature=temperature,
     )
@@ -160,7 +163,7 @@ Answer with ONLY "YES" or "NO"."""
             base_url,
             max_tokens=10,
             temperature=0.0,
-            model=llm_cfg["model"],
+            model=llm_cfg.model,
         )
         answer = response.strip().upper()
         return answer == "YES"
@@ -354,7 +357,7 @@ async def _process_single_batch(
     total_batches: int,
 ) -> dict[str, dict[str, Any]]:
     """Asynchronously process a single batch"""
-    numbered_items = {}
+    numbered_items: dict[str, dict[str, Any]] = {}
 
     # Build batch processing text
     batch_texts = []
@@ -436,7 +439,7 @@ Return ONLY the JSON array, no other text. Ensure it is valid JSON."""
             base_url,
             max_tokens=4000,
             temperature=0.1,
-            model=llm_cfg["model"],
+            model=llm_cfg.model,
         )
 
         # Parse response
@@ -558,11 +561,11 @@ async def extract_numbered_items_with_llm_async(
     Returns:
         Dict[identifier, {text: original text, type: type, page: page number}]
     """
-    numbered_items = {}
+    numbered_items: dict[str, dict[str, Any]] = {}
 
     # Create index mapping: from text_items index to full content_items index
-    text_item_to_full_index = {}
-    text_items = []
+    text_item_to_full_index: dict[int, int] = {}
+    text_items: list[dict[str, Any]] = []
 
     for idx, item in enumerate(content_items):
         item_type = item.get("type", "")
@@ -664,7 +667,7 @@ async def extract_numbered_items_with_llm_async(
         numbered_items.update(result)
 
     # Count results
-    type_stats = {}
+    type_stats: dict[str, int] = {}
     for item_data in numbered_items.values():
         item_type = item_data.get("type", "Unknown")
         type_stats[item_type] = type_stats.get(item_type, 0) + 1
@@ -832,7 +835,7 @@ def process_content_list(
     logger.info(f"Results saved to: {output_file}")
 
     # Print statistics
-    type_counts = {}
+    type_counts: dict[str, int] = {}
     for identifier in numbered_items.keys():
         # Identify equations: starting with parenthesis, e.g., (1.2.1)
         if identifier.startswith("(") and ")" in identifier:
@@ -896,13 +899,13 @@ def main():
     )
     parser.add_argument(
         "--api-key",
-        default=os.getenv("LLM_BINDING_API_KEY"),
-        help="OpenAI API key (default reads from LLM_BINDING_API_KEY)",
+        default=os.getenv("LLM_API_KEY"),
+        help="OpenAI API key (default reads from LLM_API_KEY)",
     )
     parser.add_argument(
         "--base-url",
-        default=os.getenv("LLM_BINDING_HOST"),
-        help="OpenAI API Base URL (default reads from LLM_BINDING_HOST)",
+        default=os.getenv("LLM_HOST"),
+        help="OpenAI API Base URL (default reads from LLM_HOST)",
     )
 
     args = parser.parse_args()
@@ -914,7 +917,7 @@ def main():
     # Validate API key
     if not api_key:
         raise SystemExit(
-            "Missing API Key: Please set environment variable LLM_BINDING_API_KEY or pass via --api-key"
+            "Missing API Key: Please set environment variable LLM_API_KEY or pass via --api-key"
         )
 
     # Build paths

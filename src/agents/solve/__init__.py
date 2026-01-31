@@ -13,9 +13,9 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 # Infrastructure
-from src.core.logging import Logger, get_logger
+from src.agents.base_agent import BaseAgent
+from src.logging import Logger, get_logger
 
-from .base_agent import BaseAgent
 from .utils import (
     ConfigValidator,
     PerformanceMonitor,
@@ -41,6 +41,9 @@ from .memory import (
     SolveMemory,
     ToolCallRecord,
 )
+
+# Session management
+from .session_manager import SolverSessionManager, get_solver_session_manager
 
 # Solve loop
 from .solve_loop import (
@@ -77,4 +80,7 @@ __all__ = [
     "ToolAgent",
     # Main Controller
     "MainSolver",
+    # Session Management
+    "SolverSessionManager",
+    "get_solver_session_manager",
 ]

@@ -27,11 +27,10 @@ Ctrl+C sometimes only terminates the frontend process while the backend continue
 **Solution**
 
 ```bash
-# macOS/Linux: Find and kill the process
-lsof -i :8001
-kill -9 <PID>
+# macOS/Linux
+kill -9 $(lsof -t -i :8001)
 
-# Windows: Find and kill the process
+# Windows
 netstat -ano | findstr :8001
 taskkill /PID <PID> /F
 ```
@@ -150,7 +149,7 @@ python -m src.knowledge.add_documents <kb_name> --docs <new_document.pdf>
 **Problem**
 
 When initializing a knowledge base, you may encounter this error:
-```
+```text
 ValueError: Can't patch loop of type <class 'uvloop.Loop'>
 ```
 
