@@ -1682,6 +1682,18 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
         # It is updated in run_upload_processing_task only after successful processing.
         # This prevents marking files as synced if processing fails (race condition fix).
 
+        manager.update_kb_status(
+            name=kb_name,
+            status="processing",
+            progress={
+                "stage": "processing",
+                "message": f"Syncing {len(files_to_process)} file(s) from linked folder...",
+                "percent": 0,
+                "task_id": task_id,
+                "timestamp": datetime.now().isoformat(),
+            },
+        )
+
         # Add background task to process files
         background_tasks.add_task(
             run_upload_processing_task,
